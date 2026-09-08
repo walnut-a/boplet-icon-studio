@@ -13,7 +13,7 @@ test('build produces a deterministic, resolvable contract bundle, never user dat
     await buildContracts(temp);
     const first = await readFile(join(temp, 'contracts.json'), 'utf8');
     const bundle = JSON.parse(first);
-    assert.equal(bundle.stage, 'foundation');
+    assert.equal(bundle.stage, 'skill_candidate');
     assert.equal(bundle.productionReady, false);
     assert.equal(bundle.contractVersion, 3);
     assert.ok(bundle.documents.matrix);

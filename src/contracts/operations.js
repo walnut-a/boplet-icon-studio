@@ -2,6 +2,11 @@ import { array, bool, enumeration, id, nullable, object, requestId, revision, sh
 import { CONTRACT_VERSION, documentSchemas, identity } from './models.js';
 import { resultSchema } from './results.js';
 import { connectLibrary, createProject, getBrief, listProjects, listSchemes, readProject, setProjectStatus, updateProject } from '../core/projects.js';
+import { registerProjectOperations } from './project-operations.js';
+import { registerProductionOperations } from './production-operations.js';
+import { registerMaintenanceOperations } from './maintenance-operations.js';
+import { registerSessionOperations, selectionSchema, viewSchema } from './session-operations.js';
+export { viewSchema } from './session-operations.js';
 
 // This is the sole capability inventory, including explicitly unimplemented work.
 // Planned tools have no executable schema and are never registered with a transport.
@@ -40,15 +45,11 @@ const project = { projectId: identity.projectId };
 const pageOf = item => object({ items: array(item), total: { type: 'integer', minimum: 0 }, offset: page.offset, limit: page.limit });
 const projectData = object({ project: doc('project') });
 const skillSchema = object({ status: enumeration('not_loaded', 'loaded'), version: nullable(shortText), evidence: nullable(text) });
-const selectionSchema = object({ ...Object.fromEntries(Object.entries(identity).filter(([key]) => key !== 'libraryId').map(([key, value]) => [key, nullable(value)])),
-  layerId: nullable(id('l')), nodeId: nullable(id('n')), handle: nullable(enumeration('point', 'in', 'out')) });
-export const viewSchema = object({ contextId: id('ctx'), view: enumeration('library', 'project'), projectId: nullable(identity.projectId),
-  selection: selectionSchema, uiStatus: { const: 'unattached' } });
 const storageSchema = object({ connected: bool, kind: nullable(enumeration('memory', 'node', 'browser')), libraryId: nullable(identity.libraryId) });
 
 function define(name, { description, input = empty, data, handler, mutates = false, requiresStorage = true, requiresSkill = true, persists = false }) {
   catalog[name] = { ...catalog[name], description, inputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:input:${name}`, ...input },
-    dataSchema: data, outputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:output:${name}`, ...resultSchema(data) },
+    dataSchema: data, outputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:output:${name}`, ...(data.$defs ? { $defs: data.$defs } : {}), ...resultSchema(data) },
     handler, mutates, requiresStorage, requiresSkill, persists };
 }
 
@@ -63,19 +64,22 @@ define('get_capabilities', {
 });
 define('get_workflow', {
   description: '读取当前实际起始状态和下一步，不将下载或静态页面访问当成 Skill 已加载。', requiresSkill: false, requiresStorage: false,
-  data: object({ stage: enumeration('skill_required', 'storage_required', 'project_ready'), nextActions: array(text), scope: { const: 'foundation_only' } }),
-  handler: async runtime => ({ stage: runtime.skill.status !== 'loaded' ? 'skill_required' : !runtime.library ? 'storage_required' : 'project_ready',
-    nextActions: runtime.skill.status !== 'loaded' ? [] : !runtime.library ? ['connect_library'] : ['list_projects', 'create_project'], scope: 'foundation_only' }),
+  data: object({ stage: enumeration('skill_required', 'storage_required', 'project_ready', 'brief_required', 'design_ready'), nextActions: array(text), scope: { const: 'full_skill' } }),
+  handler: async runtime => {
+    let stage = runtime.skill.status !== 'loaded' ? 'skill_required' : !runtime.library ? 'storage_required' : 'project_ready';
+    if (stage === 'project_ready' && runtime.view.projectId) stage = (await getBrief(runtime, { projectId: runtime.view.projectId })).brief.status === 'confirmed' ? 'design_ready' : 'brief_required';
+    return { stage, nextActions: { skill_required: [], storage_required: ['connect_library'], project_ready: ['list_projects', 'create_project'], brief_required: ['get_brief', 'update_brief', 'validate_brief', 'prepare_confirmation'], design_ready: ['list_schemes', 'get_design_rules', 'list_tasks', 'get_recovery'] }[stage], scope: 'full_skill' };
+  },
 });
 define('get_session', {
-  description: '读取当前核心会话；headless 是未接 UI，不伪装 WebMCP 已连接。', requiresSkill: false, requiresStorage: false,
-  data: object({ sessionId: id('session'), transport: { const: 'headless' }, skill: skillSchema, revoked: bool }),
-  handler: async runtime => ({ sessionId: runtime.sessionId, transport: 'headless', skill: runtime.skill, revoked: runtime.revoked }),
+  description: '读取当前核心会话和实际传输；浏览器是否已接入另看上下文状态。', requiresSkill: false, requiresStorage: false,
+  data: object({ sessionId: id('session'), transport: enumeration('headless', 'local_http', 'browser_worker'), skill: skillSchema, revoked: bool }),
+  handler: async runtime => ({ sessionId: runtime.sessionId, transport: runtime.transport, skill: runtime.skill, revoked: runtime.revoked }),
 });
-define('get_view_context', { description: '读取本会话的导航上下文；当前未连接网页。', data: viewSchema, requiresSkill: false, requiresStorage: false, handler: async runtime => runtime.view });
+define('get_view_context', { description: '读取本会话真实导航、显示设置和网页连接状态。', data: viewSchema, requiresSkill: false, requiresStorage: false, handler: async runtime => runtime.view });
 define('get_selection', { description: '读取显式选区；无网页或未选对象时返回 null，不自动选第一个图层。',
-  data: object({ contextId: id('ctx'), selection: selectionSchema, uiStatus: { const: 'unattached' } }), requiresSkill: false, requiresStorage: false,
-  handler: async runtime => ({ contextId: runtime.view.contextId, selection: runtime.view.selection, uiStatus: 'unattached' }) });
+  data: object({ contextId: id('ctx'), selection: selectionSchema, uiStatus: enumeration('unattached', 'attached') }), requiresSkill: false, requiresStorage: false,
+  handler: async runtime => ({ contextId: runtime.view.contextId, selection: runtime.view.selection, uiStatus: runtime.view.uiStatus }) });
 define('get_storage', { description: '读取本会话已连接的目录适配器，不读取任意路径。', data: storageSchema, requiresSkill: false, requiresStorage: false, handler: async runtime => runtime.storageStatus() });
 define('connect_library', { description: '连接宿主已授权并注入的 Storage；仅当明确 create 且目录为空时建立新版 Library，不授予系统权限。',
   input: object({ ...write, create: bool }, ['requestId', 'create']),
@@ -107,6 +111,10 @@ define('get_brief', { description: '读取项目当前需求草稿或确认稿�
 define('list_schemes', { description: '读取当前项目方案；零方案返回空列表，不能借用其他项目的方案。',
   input: object({ ...project, ...page }, ['projectId']), data: pageOf(doc('scheme')), handler: listSchemes });
 
+registerProjectOperations(define);
+registerProductionOperations(define);
+registerMaintenanceOperations(define);
+registerSessionOperations(define);
 export const operationCatalog = Object.freeze(catalog);
 export function describeOperations() {
   return Object.values(operationCatalog).map(def => ({ name: def.name, domain: def.domain, phase: def.phase, description: def.description,

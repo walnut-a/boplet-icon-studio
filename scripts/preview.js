@@ -1,0 +1,10 @@
+import { resolve } from 'node:path';
+import { NodeStorage } from '../src/storage/node.js';
+import { startServer } from '../src/runtime/server.js';
+const root = process.argv[2];
+if (!root) throw Error('请传入明确授权的数据目录；启动不会自动选择或覆盖旧目录。');
+const storage = await NodeStorage.open(root, { create: true });
+const server = await startServer({ storage, skill: { status: 'loaded', version: '0.1.0-dev.1', evidence: 'repository-development' }, appDirectory: resolve('dist/app') });
+console.log(JSON.stringify({ ...server, close: undefined, root: resolve(root), pid: process.pid }));
+process.on('SIGTERM', async () => { await server.close(); process.exit(0); });
+process.on('SIGINT', async () => { await server.close(); process.exit(0); });

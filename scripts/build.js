@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile } from 'node:fs/promises';
+import { build } from 'esbuild';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ajv } from '../src/contracts/schema.js';
@@ -14,7 +15,7 @@ export async function buildContracts(outputDirectory) {
       else ajv.compile(schema);
     }
   }
-  const bundle = { contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, stage: 'foundation', productionReady: false,
+  const bundle = { contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, stage: 'skill_candidate', productionReady: false,
     documents: documentSchemas, operations: describeOperations() };
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(join(outputDirectory, 'contracts.json'), `${JSON.stringify(bundle, null, 2)}\n`, 'utf8');
@@ -23,5 +24,12 @@ export async function buildContracts(outputDirectory) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const bundle = await buildContracts(fileURLToPath(new URL('../dist/', import.meta.url)));
-  console.log(`合同构建完成：${Object.keys(bundle.documents).length} 类文档，${bundle.operations.filter(x => x.available).length} 个已实现操作。不是 Skill 或网站发行包。`);
+  await buildApplication(resolve('dist'));
+  console.log(`本地容器构建完成：${bundle.operations.filter(x => x.available).length} 个操作；未安装或部署。`);
+}
+
+export async function buildApplication(directory) {
+  const app = join(directory, 'app'); await mkdir(app, { recursive: true });
+  await copyFile('src/app/index.html', join(app, 'index.html')); await copyFile('src/app/style.css', join(app, 'style.css'));
+  await build({ entryPoints: ['src/app/app.js'], outfile: join(app, 'app.js'), bundle: true, format: 'esm', platform: 'browser', minify: true });
 }

@@ -25,9 +25,10 @@ export const vocabularyItemSchema = object({
   usages: array(object({ usageId: id('u'), name: shortText, description: text, confirmed: bool }), { maxItems: 100 }),
   status: enumeration('active', 'retired'),
 });
+export const confirmationSummary = { type: 'string', maxLength: 2 * 1024 * 1024 };
 export const confirmationSchema = object({
   confirmationId: id('cf'), revision, contentHash: { type: 'string', pattern: '^sha256-[a-f0-9]{64}$' },
-  summary: text, confirmedAt: timestamp, evidenceKind: enumeration('host_attestation', 'verified_host_receipt'), evidenceReference: text,
+  summary: confirmationSummary, confirmedAt: timestamp, evidenceKind: enumeration('host_attestation', 'verified_host_receipt'), evidenceReference: text,
 });
 const briefFields = Object.fromEntries(['purpose', 'goals', 'audience', 'usage', 'scope', 'constraints'].map(name => [name, briefFieldSchema]));
 export const briefContentSchema = object({
@@ -51,7 +52,7 @@ export const layerSchema = { oneOf: [
   object({ ...layerBase, type: { const: 'group' }, children: array(layerRef, { minItems: 1, maxItems: 1000 }) }),
   object({ ...layerBase, type: { const: 'boolean' }, operation: enumeration('union', 'subtract', 'intersect', 'exclude'), children: array(layerRef, { minItems: 2, maxItems: 1000 }) }),
   object({ ...layerBase, type: { const: 'instance' }, primitiveId: id('prim'), transform: array(number, { minItems: 6, maxItems: 6 }) }),
-] };
+] .map(schema => ({ ...schema, properties: { ...schema.properties, transform: array(number, { minItems: 6, maxItems: 6 }) } })) };
 export const variantSchema = object({
   variantId: identity.variantId, size: dimensions, style: enumeration('filled', 'outline'),
   weight: enumeration('light', 'regular', 'medium', 'bold'), status: enumeration('active', 'retired'),

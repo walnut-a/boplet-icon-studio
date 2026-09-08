@@ -1,0 +1,155 @@
+import { registerWebMCP } from '../transports/webmcp.js';
+import { zipSync, strToU8 } from 'fflate';
+
+const $ = selector => document.querySelector(selector);
+const main = $('#main'), navigation = $('#navigation'), inspector = $('#inspector');
+let token, context, capabilities, rendering = false, lastSnapshot = '', language = localStorage.getItem('icon-studio-language') ?? 'zh', options = { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 };
+const translations = { '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层或节点查看属性。': 'Select a layer or node to inspect it.', '设计目的': 'Purpose', '目标': 'Goals', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
+const t = value => language === 'en' ? translations[value] ?? value : value;
+const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const rid = () => crypto.randomUUID();
+const error = message => { $('#error').textContent = message; $('#error').hidden = !message; };
+const button = (label, action, attrs = '') => `<button data-action="${action}" ${attrs}>${esc(t(label))}</button>`;
+const empty = (title, description = '') => `<div class="empty"><h2>${esc(t(title))}</h2><p>${esc(t(description))}</p></div>`;
+const scope = keys => Object.fromEntries(keys.map(k => [k, context.selection[k]]).filter(([, value]) => value));
+const iconScope = () => scope(['projectId', 'schemeId', 'iconId']);
+const variantScope = () => scope(['projectId', 'schemeId', 'iconId', 'variantId']);
+async function raw(name, input = {}, signal) {
+  const response = await fetch('/operation', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ name, input }), signal });
+  if (!response.ok) throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));
+  return response.json();
+}
+async function run(name, input = {}) {
+  let result = await raw(name, input);
+  while (result.status === 'accepted') { await new Promise(resolve => setTimeout(resolve, 100)); result = (await raw('get_operation', { operationId: result.operationId })).data.result; }
+  if (!result.ok) throw Error(result.error.message); return result.data;
+}
+async function navigate(view, args = {}, push = true) {
+  await run('navigate', { requestId: rid(), view, ...args });
+  if (push) history.pushState(null, '', `#${encodeURIComponent(JSON.stringify({ view, ...args }))}`);
+  await render(true); main.focus({ preventScroll: true });
+}
+async function exportFiles(target, exportScope) {
+  const { delivery } = await run('prepare_export', { ...target, scope: exportScope, kind: 'svg', requestId: rid() });
+  const files = {};
+  for (const artifact of delivery.artifacts) { const result = await run('read_artifact', { projectId: target.projectId, exportId: delivery.exportId, artifactId: artifact.artifactId }); files[result.relativePath] = strToU8(result.content); }
+  const single = delivery.artifacts.length === 1; const name = single ? delivery.artifacts[0].relativePath.split('/').at(-1) : `${delivery.exportId}.zip`;
+  const blob = new Blob([single ? Object.values(files)[0] : zipSync(files)], { type: single ? 'image/svg+xml' : 'application/zip' });
+  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function render(force = false) {
+  if (rendering) return; rendering = true;
+  try {
+    const next = await run('get_view_context');
+    options = next.options;
+    const storage = await run('get_storage');
+    const updates = await run('get_skill_update_status');
+    $('#update').hidden = updates.status !== 'update_available';
+    if (!$('#update').hidden) $('#update').textContent = language === 'zh' ? `Skill ${updates.latestVersion} 可更新。` : `Skill ${updates.latestVersion} is available.`;
+    let project = null, schemes = [], data = null;
+    if (next.projectId && storage.connected) { project = (await run('get_project', { projectId: next.projectId })).project; schemes = (await run('list_schemes', { projectId: next.projectId, limit: 100 })).items; }
+    const a = Object.fromEntries(Object.entries(next.selection).filter(([, value]) => value));
+    const target = Object.fromEntries(['projectId', 'schemeId', 'iconId', 'variantId'].filter(k => a[k]).map(k => [k, a[k]]));
+    if (storage.connected) {
+      if (next.view === 'library') data = await run('list_projects', { status: 'active', limit: 100 });
+      else if (next.view === 'project') data = await run('get_brief', { projectId: next.projectId });
+      else if (next.view === 'icons') data = await run('query_icons', { projectId: next.projectId, schemeId: a.schemeId, offset: options.offset, search: options.search, ...(options.tag ? { tag: options.tag } : {}) });
+      else { data = await run('get_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId }); if (next.view === 'scenes') data.scenes = await run('get_context_preview', { projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId }); else try { data.preview = await run('preview_icon', target); } catch { data.preview = null; } }
+    }
+    const snapshot = JSON.stringify({ next, project, schemes, data, storage, options, language });
+    context = next;
+    if (!force && snapshot === lastSnapshot) return;
+    lastSnapshot = snapshot;
+    const focused = document.activeElement?.id; const selectionStart = document.activeElement?.selectionStart;
+    $('#project-label').textContent = project?.name ?? ''; $('#language').textContent = language === 'zh' ? 'EN' : '中文'; $('#properties-label').textContent = t('属性'); $('#refresh').textContent = t('刷新'); $('#disconnect').textContent = t('断开目录');
+    navigation.innerHTML = project ? `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav><div class="nav-footer">${button('需求', 'project', 'class="quiet"')}${button('返回项目库', 'library', 'class="quiet"')}</div>` : `<h2>${esc(t('项目'))}</h2><nav>${button('项目库', 'library', 'aria-current="page"')}</nav>`;
+    inspector.hidden = true; inspector.innerHTML = '';
+    if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); return; }
+    if (next.view === 'library') {
+      main.innerHTML = `<div class="heading"><h1>${esc(t('项目库'))}</h1></div>` + (!data.items.length ? empty('暂无项目', '在对话中描述设计需求，即可开始一个新项目。') : `<div class="project-list">${data.items.map(p => `<button class="project-row" data-action="open-project" data-id="${p.projectId}"><span><strong>${esc(p.name)}</strong><small>${esc(p.purpose ?? '')}</small></span><small>${esc(p.updatedAt.slice(0, 10))}</small></button>`).join('')}</div>`);
+    } else if (next.view === 'project') {
+      const labels = { purpose: '设计目的', goals: '目标', audience: '用户', usage: '使用场景', scope: '范围', constraints: '约束' };
+      main.innerHTML = `<div class="heading"><h1>${esc(project.name)}</h1></div><div class="brief">${Object.entries(labels).map(([key, label]) => `<section><h2>${esc(t(label))}</h2><p>${esc(data.brief.content.fields[key]?.value ?? t('未提供'))}</p></section>`).join('')}</div>` + (!schemes.length ? empty('暂无方案', '项目需求确认后，可在对话中创建方案。') : '');
+    } else if (next.view === 'icons') {
+      main.innerHTML = `<div class="heading"><h1>${esc(t('图标列表'))}</h1>${button('导出', 'export-scheme')}</div><div class="filters"><input id="search" type="search" placeholder="${esc(t('搜索图标'))}" aria-label="${esc(t('搜索图标'))}" value="${esc(options.search)}">${data.tags.length ? `<label>${esc(t('标签'))}<select id="tags"><option value="">${esc(t('全部'))}</option>${data.tags.map(tag => `<option ${tag === options.tag ? 'selected' : ''}>${esc(tag)}</option>`).join('')}</select></label>` : ''}<span class="count">${data.total} ${language === 'en' ? 'icons' : '图标'}</span></div><div class="icon-grid">${data.items.map(({ icon, variants }) => `<button class="icon-tile" data-action="icon" data-id="${icon.iconId}" data-variant="${variants[0]?.variantId ?? ''}"><span class="thumbnail" data-thumb="${icon.iconId}"></span><strong>${esc(icon.name)}</strong><small>${variants.map(v => v.size).join(' / ')} px</small></button>`).join('')}</div>${!data.items.length ? empty('没有匹配的图标', '尝试调整搜索条件。') : ''}<div class="pagination">${button('上一页', 'previous', options.offset ? '' : 'disabled')}<small>${Math.floor(options.offset / 48) + 1} / ${Math.max(1, Math.ceil(data.total / 48))}</small>${button('下一页', 'next', options.offset + 48 >= data.total ? 'disabled' : '')}</div>`;
+      await Promise.all(data.items.map(async ({ icon, variants }) => { const slot = main.querySelector(`[data-thumb="${icon.iconId}"]`); if (!variants[0]) return; try { const preview = await run('preview_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: icon.iconId, variantId: variants[0].variantId }); if (slot?.isConnected) slot.innerHTML = preview.svg; } catch { if (slot) slot.textContent = t('尚未绘制'); } }));
+    } else {
+      main.innerHTML = `${button('返回图标列表', 'icons', 'class="quiet back"')}<div class="title"><h1>${esc(data.icon.name)}</h1><small>${esc(data.icon.concept)}</small></div><div class="preview-switch">${button('图标结构', 'structure', `aria-pressed="${next.view === 'structure'}" data-variant="${a.variantId ?? data.matrix.variants[0]?.variantId}"`)}${button('应用场景', 'scenes', `aria-pressed="${next.view === 'scenes'}"`)}</div>`;
+      if (next.view === 'scenes') {
+        main.innerHTML += sceneBoard(data.scenes.samples);
+      } else {
+        const variant = data.matrix.variants.find(v => v.variantId === a.variantId); if (!variant) throw Error('当前变体不存在，请返回列表。');
+        main.innerHTML += `<div class="versions"><span>${esc(t('尺寸 / 样式'))}</span>${data.matrix.variants.filter(v => v.status === 'active').map(v => button(`${v.size} × ${v.size} px · ${t(v.style === 'filled' ? '填充' : '描边')} · ${({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]&&language==='zh'?({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]:v.weight}`, 'structure', `data-variant="${v.variantId}" aria-pressed="${v.variantId === a.variantId}"`)).join('')}</div><div class="frame"><div class="toolbar"><label><input id="grid" type="checkbox" ${options.grid ? 'checked' : ''}>${esc(t('网格'))}</label><label><input id="nodes" type="checkbox" ${options.nodes ? 'checked' : ''}>${esc(t('节点'))}</label><label>${esc(t('缩放'))}<select id="zoom">${[0.5, 1, 2, 4].map(z => `<option value="${z}" ${options.zoom === z ? 'selected' : ''}>${z * 100}%</option>`).join('')}</select></label></div><div class="canvas"></div><div class="actual"><small>${esc(t('实际尺寸'))}</small></div></div>`;
+        const preview = data.preview; if (!preview) $('.canvas').innerHTML = empty('尚未绘制');
+        if (preview) { $('.canvas').innerHTML = preview.svg; const svg = $('.canvas svg'); svg.style.width = `${Math.min(520, window.innerWidth - 96) * options.zoom}px`; svg.style.maxWidth = 'none';
+          if (options.grid) { const ns = 'http://www.w3.org/2000/svg'; const grid = document.createElementNS(ns, 'g'); for (let n = 0; n <= variant.size; n++) { for (const [x1,y1,x2,y2] of [[n,0,n,variant.size],[0,n,variant.size,n]]) { const line = document.createElementNS(ns, 'line'); Object.entries({ x1,y1,x2,y2,class:'grid-line' }).forEach(([k,v])=>line.setAttribute(k,v)); grid.append(line); } } svg.prepend(grid); }
+          $('.actual').innerHTML += `<span class="sample">${preview.svg}</span><span class="sample inverse">${preview.svg}</span><small>${variant.size} × ${variant.size} px</small>`;
+          if (options.nodes && a.layerId) drawNodes(svg, variant.layers, a, variant.size);
+        }
+        inspector.hidden = false;
+        inspector.innerHTML = `<section><h2>${esc(t('图标详情'))}</h2><small>${variant.size} × ${variant.size} px · ${esc(t(variant.style === 'filled' ? '填充' : '描边'))}</small>${button('下载 SVG', 'download', 'class="primary"')}</section><section><h2>${esc(t('图层'))}</h2><div class="layers">${flatten(variant.layers).map(l => button(l.name, 'layer', `data-id="${l.layerId}" aria-pressed="${l.layerId === a.layerId}"`)).join('')}</div></section><section><h2>${esc(t('属性'))}</h2>${properties(variant.layers, a)}</section>`;
+      }
+    }
+    if (focused && document.getElementById(focused)) { const el = document.getElementById(focused); el.focus(); if (typeof selectionStart === 'number' && el.setSelectionRange) el.setSelectionRange(selectionStart, selectionStart); }
+  } catch (e) { error(e.message); } finally { rendering = false; }
+}
+function sceneBoard(samples) {
+  if (!samples.length) return empty('暂无应用场景', '尚未登记这个图标的应用用途。');
+  const names={usage:language==='zh'?'用途':'Usage',size_comparison:language==='zh'?'尺寸对比':'Size comparison',inverse:language==='zh'?'反色':'Inverse'};
+  return ['usage','size_comparison','inverse'].map(kind=>`<section class="scene-section"><h2>${names[kind]}</h2><div class="scene-grid">${samples.filter(s=>s.kind===kind).map(sample=>{const svg=sample.svg.replace(/width="[^"]+" height="[^"]+"/,'width="100%" height="100%"');const drawing=`<span class="scene-icon" style="width:${sample.displaySize}px;height:${sample.displaySize}px">${svg}</span>`;const contextual=sample.kind==='usage'&&sample.presetId!=='app';return `<button class="scene-sample ${sample.inverse?'inverse':''}" data-action="structure" data-variant="${sample.variantId}" aria-label="${esc(sample.name)} ${sample.displaySize} px"><span class="${contextual?'context-strip':'context-art'}">${contextual?'<span class="context-placeholder" aria-hidden="true"></span>':''}${drawing}${contextual?'<span class="context-placeholder short" aria-hidden="true"></span>':''}</span><span>${esc(sample.name)} · ${sample.displaySize} px<small>${language==='zh'?'源':'Source'} ${sample.sourceSize} px</small></span></button>`;}).join('')}</div></section>`).join('');
+}
+function flatten(layers) { return layers.flatMap(l => [l, ...(l.children ? flatten(l.children) : [])]); }
+function properties(layers, selection) {
+  const layer = flatten(layers).find(l => l.layerId === selection.layerId); if (!layer) return `<p>${esc(t('选择图层或节点查看属性。'))}</p>`;
+  const node = layer.nodes?.find(n => n.nodeId === selection.nodeId); const values = node ? { nodeId: node.nodeId, handle: selection.handle ?? 'point', point: JSON.stringify(node[selection.handle ?? 'point']) } : { layerId: layer.layerId, type: layer.type, ...(layer.drawing ? { drawing: layer.drawing } : {}) };
+  return `<dl class="properties">${Object.entries(values).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+}
+function drawNodes(svg, layers, selection, size) {
+  const layer = flatten(layers).find(l => l.layerId === selection.layerId); if (!layer?.nodes) return;
+  const scale = size / (Math.min(520, window.innerWidth - 96) * options.zoom);
+  const chain = (items, matrices = []) => { for (const item of items) { const next = [...matrices, ...(item.transform ? [item.transform] : [])]; if (item.layerId === selection.layerId) return next; if (item.children) { const found = chain(item.children, next); if (found) return found; } } };
+  const transforms = chain(layers) ?? [];
+  const world = point => transforms.reduceRight(([x,y],[a,b,c,d,tx,ty])=>[a*x+c*y+tx,b*x+d*y+ty],point);
+  for (const node of layer.nodes) for (const handle of ['point','in','out']) { if (!node[handle]) continue;
+    const group = document.createElementNS('http://www.w3.org/2000/svg','g'); const [x,y]=world(node[handle]);
+    Object.entries({ class:'selection-node',tabindex:0,role:'button','aria-label':`${node.nodeId} ${handle}`,'aria-pressed':String(node.nodeId===selection.nodeId&&handle===selection.handle),'data-action':'node','data-node':node.nodeId,'data-handle':handle }).forEach(([k,v])=>group.setAttribute(k,v));
+    group.innerHTML=`<circle cx="${x}" cy="${y}" r="${12*scale}" class="node-hit"/><circle cx="${x}" cy="${y}" r="${4*scale}" class="node-dot" vector-effect="non-scaling-stroke"/>`;svg.append(group);
+  }
+}
+document.addEventListener('click', async event => {
+  const element = event.target.closest('[data-action]'); if (!element || element.disabled) return; error('');
+  try { const action = element.dataset.action;
+    if (action === 'library') await navigate('library');
+    else if (action === 'project') await navigate('project', { projectId: context.projectId });
+    else if (action === 'open-project') await navigate('project', { projectId: element.dataset.id });
+    else if (action === 'scheme') { await run('set_view_options',{requestId:rid(),options:{offset:0,tag:null}}); await navigate('icons',{projectId:context.projectId,schemeId:element.dataset.id}); }
+    else if (action === 'icons') await navigate('icons', scope(['projectId','schemeId']));
+    else if (action === 'icon') await navigate('structure',{...scope(['projectId','schemeId']),iconId:element.dataset.id,variantId:element.dataset.variant});
+    else if (action === 'structure') await navigate('structure',{...iconScope(),variantId:element.dataset.variant});
+    else if (action === 'scenes') await navigate('scenes',iconScope());
+    else if (action === 'layer' || action === 'node') { await run('select_geometry',{requestId:rid(),expectedContextId:context.contextId,layerId:action==='layer'?element.dataset.id:context.selection.layerId,...(action==='node'?{nodeId:element.dataset.node,handle:element.dataset.handle}:{})}); await render(true); }
+    else if (action === 'previous' || action === 'next') {await run('set_view_options',{requestId:rid(),options:{offset:options.offset+(action==='next'?48:-48)}});await render(true);}
+    else if (action === 'download') await exportFiles(variantScope(),'variant');
+    else if (action === 'export-scheme') await exportFiles(scope(['projectId','schemeId']),'scheme');
+    else if (action === 'connect') {await run('connect_library',{requestId:rid(),create:false});await render(true);}
+  } catch(e) {error(e.message);}
+});
+document.addEventListener('keydown',event=>{if(event.target.matches('.selection-node')){if(['Enter',' '].includes(event.key)){event.preventDefault();event.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();const nodes=[...document.querySelectorAll('.selection-node')],index=nodes.indexOf(event.target),next=event.key==='Home'?0:event.key==='End'?nodes.length-1:(index+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+nodes.length)%nodes.length;nodes[next].focus();}}});
+let searchTimer;
+document.addEventListener('input',event=>{if(event.target.id==='search'){clearTimeout(searchTimer);const search=event.target.value;searchTimer=setTimeout(async()=>{await run('set_view_options',{requestId:rid(),options:{search,offset:0}});await render(true);},180);}});
+document.addEventListener('change',async event=>{const id=event.target.id;if(['grid','nodes','zoom','tags'].includes(id)){options[id==='tags'?'tag':id]=id==='zoom'?Number(event.target.value):id==='tags'?event.target.value||null:event.target.checked;options.offset=0;await run('set_view_options',{requestId:rid(),options});await render(true);}});
+$('#language').onclick=()=>{language=language==='zh'?'en':'zh';localStorage.setItem('icon-studio-language',language);document.documentElement.lang=language==='zh'?'zh-CN':'en';render(true);};
+$('#refresh').onclick=()=>render(true);
+$('#disconnect').onclick=async()=>{await run('disconnect_storage',{requestId:rid()});await render(true);};
+async function restoreRoute(){try{if(location.hash){const route=JSON.parse(decodeURIComponent(location.hash.slice(1)));await navigate(route.view,Object.fromEntries(Object.entries(route).filter(([k])=>k!=='view')),false);}}catch(e){error(e.message);}}
+window.addEventListener('popstate',restoreRoute);
+async function start(){
+  try{const boot=await fetch('/bootstrap'+location.search,{method:'POST'});if(!boot.ok)throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));({token}=await boot.json());capabilities=await run('get_capabilities');
+    const mcp=await registerWebMCP(document.modelContext,capabilities,async(name,args,signal)=>{const result=await raw(name,args,signal);if(result.ok&&capabilities.operations.find(o=>o.name===name)?.readOnly===false)await render(true);return result;});
+    $('#runtime-info').textContent=mcp.available?'WebMCP · '+capabilities.skill.version:'本地运行 · '+(capabilities.skill.version??'未知版本');
+    await restoreRoute();await render(true);
+    setInterval(()=>{if(!document.hidden)render();},1500);
+    const updates=await run('get_skill_update_status');if(updates.status==='update_available'){$('#update').hidden=false;$('#update').textContent=`Skill ${updates.latestVersion} 可更新。`;}
+  }catch(e){error(e.message);}
+}
+start();

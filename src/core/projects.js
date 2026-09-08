@@ -65,7 +65,8 @@ export async function setProjectStatus(runtime, args, status) {
 
 export async function getBrief(runtime, args) {
   const project = await readProject(runtime, args.projectId);
-  const brief = await runtime.readDocument('brief', `${root(args.projectId)}/design-brief.json`);
+  let brief = await runtime.readDocument('brief', `${root(args.projectId)}/design-brief.json`);
+  if (brief.revision !== project.currentBriefRevision) brief = await runtime.readDocument('brief', `${root(args.projectId)}/history/brief/${project.currentBriefRevision}.json`);
   if (brief.projectId !== args.projectId || brief.revision !== project.currentBriefRevision) throw new StudioError('VALIDATION_FAILED', '需求文档与项目引用不一致；需读取恢复状态。');
   return { brief };
 }

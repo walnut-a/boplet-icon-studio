@@ -6,6 +6,7 @@ coverage/
 test-results/
 playwright-report/
 .qa/
+.impeccable/review/
 *.log
 .env
 .env.*

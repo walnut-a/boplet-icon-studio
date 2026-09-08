@@ -1,0 +1,43 @@
+---
+name: make-product-icons
+description: Design, extend, inspect, and deliver coherent product UI icon systems using confirmed briefs, shared design rules, explicit geometry, and a local HTML review container. Use for creating or maintaining an icon library, not raster illustration or general logo image generation.
+---
+
+# 产品图标工坊
+
+先完整读取本文件，再开始操作。以对话澄清需求、登记计划、修改图标；HTML 用于看项目、方案、结构、应用场景和真实执行状态。用户可以导航、选择节点和下载，不在容器手填需求或拖动几何。不要在界面加入内部设计推理、评分、风险评价或常驻“已保存”。
+
+## 开始之前
+
+1. 读取包内 `version.json`。本包格式与合同都是 v3；未知旧格式只保留，不转换、映射或迁移。不修改全局其他 Skill 或旧项目。
+2. 读取 [运行与恢复](references/runtime.md)，确认本次用户授权的数据目录。首次给出系统文稿目录下 `Codex/Icon Projects` 的默认建议，也可使用当前目录或用户另选目录。**路径建议不是授权**。记住选择后不反复询问。
+3. 安装和加载分开判断：文件落地是安装；当前 Agent 读完本文件和所需规范才是加载。启动器的加载声明是宿主转述，不是加密验证。
+4. 先走支持原生 WebMCP 的容器；没有 WebMCP 仍可通过同一包的本地调用完整工作，不把它当使用门槛。网页来源/目录权限不可靠时切换本地容器，重新授权同一数据目录；不要复制业务数据进 HTML。
+
+当前包提供本地容器；不表示在线站点已经部署。在线纯浏览器读写授权目录由后续网页版本提供，不让公网页面调用 localhost。
+
+## 规范与工具
+
+- 设计前读取 [设计方法](references/design-method.md)。进入修改前读取 [数据与维护](references/data-and-maintenance.md)。
+- 两条完整路径见 [流程示例](references/workflows.md)。本地标准请求见 [运行与恢复](references/runtime.md)。
+- **`contracts.json` 是工具输入、输出和数据结构的唯一机器合同**；运行中的 `get_capabilities` 返回同一份合同。按本文件给出的流程定位具名操作，再读取这些操作的 schema，不枚举猜测 MCP。不要自造旧工具名或混用 `projectKey`。
+- WebMCP 具名工具以 `icon_studio_v3_` 开头；本地 `/operation` 使用不带前缀的同名操作。核心、校验和落盘一致，不实现两套几何引擎。
+- 每个写操作提供新的 `requestId`。网络回执不确定时只重试原 ID 和原参数；过期先读状态。`sourceRevision` 说明来源，不是锁；同一目标最后成功保存生效。原则上不建议多个 Agent 同时改同一项目，但不阻止用户这样使用。
+- 用户说“这个”“选中的”时，先读 `get_view_context` 和 `get_selection`，传回 `expectedContextId` 与明确身份；没有选择就不能猜。场景页面不具有隐藏的结构节点选区。
+- `accepted` 只表示已受理，继续用 `get_operation` 等最终回执；`waiting_user` 等用户授权/确认；`failed` 不宣称完成。批量逐项结果中有失败就如实报告。保存、验证、编译、用户接受和导出不是同一状态。
+
+## 工作顺序
+
+1. **项目库**：连接目录 → 列表/打开或创建项目。可以平行有多个项目，每个项目有多个独立方案。不得把方案当项目。
+2. **需求**：在聊天中询问设计目的、目标、用户、使用场景、范围、约束。用 `update_brief` 写入，逐字段记录用户来源、资料来源或待确认推断；页面同步展示，无需让用户再说“表单填完”。
+3. **确认**：`validate_brief` → `prepare_confirmation` → 把返回的确切摘要展示给用户 → 用户确认后 `confirm_brief`。内容变化需要重新准备确认，不代替用户确认。规则同样准备和确认。
+4. **方案**：确认需求后 `create_scheme`；第一方案不需要来源。不同方案明确隔离，左侧切换，不混排图标。复制方案之后重新确认规则。
+5. **图标系统**：先登记语义名称、concept、实际 tags、用途；“主图标”和“状态栏”是不同用途对象，不默认当一个图标的尺寸变体。尺寸/填充描边/轻重属于同一语义图标的独立变体。
+6. **生产**：确认规则 → 登记变体和明确目标批次 → 启动任务 → `apply_operations` 写显式图层/节点/组件 → `validate_icon` → `compile_scheme`。先做代表性图标确认风格，再分批扩展。没有任务不能直接生产。
+7. **审核与修改**：导航到明确图标，读选区与属性，保存用户原文反馈；按反馈修改再编译。只有用户接受确切内容后记录审核，旧审核不自动适用于新内容。
+8. **交付**：明确项目/方案/图标/变体范围，`prepare_export` → 最终 `get_export` → `read_artifact`。SVG 必须与当前编译哈希相符。按钮使用同一流程；源快照不等于迁移包。
+9. **恢复与更新**：重新调用先连接原目录、读项目/任务/恢复状态，不重复建项目。启动及使用过程中非阻塞检查 Skill 更新，最多复用 24 小时成功缓存。工具可显式重查；未知版本或网络失败不报告“最新版”。不自动安装、不替换运行核心、不迁移旧项目。
+
+## 完成判断
+
+完成应有当前磁盘回执、对应编译/导出内容和真实容器观察。截图只是显示证据，不能证明安装、部署或用户审核已经完成。不能把测试中合成的用户确认拿来当真实用户确认。

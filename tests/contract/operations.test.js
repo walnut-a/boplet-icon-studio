@@ -6,7 +6,7 @@ import { MemoryStorage } from '../../src/storage/memory.js';
 import { operationCatalog } from '../../src/contracts/operations.js';
 import { validateResult } from '../../src/contracts/results.js';
 
-test('all 22 required capability domains are traceable, including unavailable work', async () => {
+test('22 个能力域的 96 个操作均有严格可执行合同', async () => {
   const prd = await readFile(new URL('../../docs/产品图标工坊-项目化架构与双端产品方案.md', import.meta.url), 'utf8');
   const table = prd.split('### 11.2 工具覆盖目录')[1].split('### 11.3')[0];
   const required = [...table.matchAll(/`([a-z]+_[a-z_]+)`/g)].map(x => x[1]);
@@ -18,6 +18,7 @@ test('all 22 required capability domains are traceable, including unavailable wo
   assert.equal(capabilities.ok, true);
   assert.ok(capabilities.data.documents.project);
   for (const capability of capabilities.data.operations) {
+    assert.equal(capability.available, true, capability.name);
     if (capability.available) {
       assert.ok(capability.inputSchema);
       assert.ok(capability.outputSchema);
@@ -26,7 +27,12 @@ test('all 22 required capability domains are traceable, including unavailable wo
       assert.ok(capability.phase);
     }
   }
-  const unavailable = await studio.execute('compile_scheme', {});
+  assert.equal(capabilities.data.operations.length,96);
+  for (const capability of capabilities.data.operations) {
+    const invalid = await studio.execute(capability.name,{unexpectedField:true});
+    assert.equal(invalid.error.code,'VALIDATION_FAILED',capability.name);
+  }
+  const unavailable = await studio.execute('unknown_operation', {});
   assert.equal(unavailable.ok, false);
   assert.equal(unavailable.error.code, 'CAPABILITY_UNAVAILABLE');
   assert.equal(unavailable.persistence, 'not_applicable');
