@@ -1,0 +1,19 @@
+{
+  "name": "icon-studio",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.23.1 <23" },
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js tests/contract/*.test.js tests/integration/*.test.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:contract": "node --test tests/contract/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js",
+    "test:e2e": "node scripts/not-ready.js A2-e2e",
+    "build": "node scripts/build.js",
+    "pack:skill": "node scripts/not-ready.js A4-skill-package",
+    "build:web": "node scripts/not-ready.js B2-web-build",
+    "check:package": "node scripts/not-ready.js A4-package-check"
+  },
+  "dependencies": { "ajv": "8.20.0" }
+}
