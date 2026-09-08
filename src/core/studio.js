@@ -13,12 +13,12 @@ function canonicalJson(value) {
 }
 
 export function createStudio({ storage, sources = null, updateSource = null, updateCache = null, transport = 'headless', fetcher = globalThis.fetch, skill = { status: 'not_loaded', version: null, evidence: null }, clock = Date.now,
-  receiptTtlMs = 24 * 60 * 60 * 1000, maxRequests = 10000 } = {}) {
+  receiptTtlMs = 24 * 60 * 60 * 1000, maxRequests = 10000, requireUI = false } = {}) {
   const id = prefix => `${prefix}-${crypto.randomUUID()}`;
   const time = () => new Date(clock()).toISOString();
   const receipts = new Map();
   const runtime = {
-    storage, sources, transport, attached: false, skill: structuredClone(skill), library: null, revoked: false, sessionId: id('session'), id, time,
+    storage, sources, transport, requireUI, attached: false, skill: structuredClone(skill), library: null, revoked: false, sessionId: id('session'), id, time,
     permissions: new Map(), operationResults: new Map(), operationControls: new Map(), events: [], eventSequence: 0, listeners: new Set(),
     viewOptions: { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 },
     emit(event) { this.events.push({ cursor: ++this.eventSequence, type: event.type, operationId: event.operationId ?? null, name: event.name ?? null, target: event.target ?? {}, time: time(), status: event.status ?? null }); if (this.events.length > 1000) this.events.shift(); for (const done of this.listeners) done(); },
@@ -57,6 +57,7 @@ export function createStudio({ storage, sources = null, updateSource = null, upd
       for (const key of Object.keys(identity)) if (args[key]) base.target[key] = args[key];
       if (runtime.revoked && !['get_capabilities', 'get_session', 'get_storage', 'get_view_context', 'get_selection'].includes(name)) throw new StudioError('PERMISSION_DENIED', '当前会话已撤销。');
       if (def.requiresSkill && runtime.skill.status !== 'loaded') throw new StudioError('CAPABILITY_UNAVAILABLE', '需要先由宿主安装并加载 Skill。', { nextActions: ['get_workflow'] });
+      if (runtime.requireUI && !runtime.attached && def.requiresStorage && def.requiresSkill) throw new StudioError('PERMISSION_REQUIRED', '请先打开本会话的 HTML 容器；不能在没有页面的情况下进入设计流程。', { nextActions: ['get_workflow', 'get_view_context'] });
       if (def.requiresStorage && !runtime.library) throw new StudioError('PERMISSION_REQUIRED', '尚未连接已授权的数据目录。', { nextActions: ['get_storage'] });
       if (def.mutates) {
         const fingerprint = canonicalJson({ name, args });

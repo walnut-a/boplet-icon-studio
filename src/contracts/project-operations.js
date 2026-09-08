@@ -12,10 +12,10 @@ export const v = { ...i, variantId: identity.variantId };
 export const write = { requestId, sourceRevision: revision, expectedContextId: id('ctx') };
 export const input = (fields, required = Object.keys(fields)) => object({ ...write, ...fields }, ['requestId', ...required]);
 export const variantsData = object({ variants: array({ $ref: `${documentSchemas.matrix.$id}#/properties/variants/items` }) });
-const fields = ['purpose', 'goals', 'audience', 'usage', 'scope', 'constraints'];
+const fields = Object.keys(briefContentSchema.properties.fields.properties);
 const confirmationPreview = object({ confirmationId: id('cf'), revision, contentHash: text, summary: confirmationSummary });
 const semanticInput = object(Object.fromEntries(Object.entries(vocabularyItemSchema.properties).filter(([k]) => !['iconId', 'status'].includes(k))));
-const readBriefOrRules = (r, a) => a.schemeId ? readRules(r, a) : getBrief(r, a).then(x => x.brief);
+const readBrief = (r, a) => getBrief(r, a).then(x => x.brief);
 
 export function registerProjectOperations(define) {
   define('update_brief', { description: '完整保存需求草稿；字段带来源，不隐式确认。', input: input({ ...p, content: briefContentSchema }), data: object({ brief: doc('brief') }), mutates: true, persists: true,
@@ -32,22 +32,21 @@ export function registerProjectOperations(define) {
   define('validate_brief', { description: '检查需求缺项；不代替用户确认。', input: object(p), data: object({ valid: bool, missing: array(text) }), handler: async (r, a) => {
     const { brief } = await getBrief(r, a); const missing = fields.filter(k => !brief.content.fields[k]?.value.trim()); return { valid: !missing.length, missing };
   } });
-  define('prepare_confirmation', { description: '为项目需求或方案规则生成精确内容摘要，供对话确认。', input: object(s, ['projectId']), data: object({ confirmation: confirmationPreview }), handler: async (r, a) => {
-    const document = await readBriefOrRules(r, a);
-    if (!a.schemeId && fields.some(k => !document.content.fields[k]?.value.trim())) throw new StudioError('VALIDATION_FAILED', '需求仍有缺项。');
-    const confirmation = { confirmationId: r.id('cf'), revision: document.revision, contentHash: await hash(document.content), summary: a.schemeId ? `确认规则：${JSON.stringify(document.content)}` : fields.map(k => `${k}: ${document.content.fields[k].value}`).join('\n') };
+  define('prepare_confirmation', { description: '为项目需求生成精确内容摘要，供用户确认；不用于内部绘制规则。', input: object(p), data: object({ confirmation: confirmationPreview }), handler: async (r, a) => {
+    const document = await readBrief(r, a);
+    if (fields.some(k => !document.content.fields[k]?.value.trim())) throw new StudioError('VALIDATION_FAILED', '需求仍有缺项。');
+    const confirmation = { confirmationId: r.id('cf'), revision: document.revision, contentHash: await hash(document.content), summary: fields.map(k => `${k}: ${document.content.fields[k].value}`).join('\n') };
     r.confirmations ??= new Map(); r.confirmations.set(confirmation.confirmationId, { ...a, ...confirmation }); return { confirmation };
   } });
-  for (const [name, kind] of [['confirm_brief', 'brief'], ['confirm_design_rules', 'rules']]) define(name, {
-    description: '确认准备好的确切内容；宿主转述记为 host_attestation，不伪装签名。', input: input({ ...(kind === 'brief' ? p : s), confirmationId: id('cf'), evidenceReference: text }), data: object({ [kind]: doc(kind) }), mutates: true, persists: true,
+  define('confirm_brief', {
+    description: '用户确认准备好的确切需求；宿主转述记为 host_attestation，不伪装签名。', input: input({ ...p, confirmationId: id('cf'), evidenceReference: text }), data: object({ brief: doc('brief') }), mutates: true, persists: true,
     handler: async (r, a) => {
-      const document = await readBriefOrRules(r, a); const prepared = requireValue(r.confirmations?.get(a.confirmationId), '确认摘要不存在；请重新准备。');
+      const document = await readBrief(r, a); const prepared = requireValue(r.confirmations?.get(a.confirmationId), '确认摘要不存在；请重新准备。');
       if (prepared.projectId !== a.projectId || prepared.schemeId !== a.schemeId || prepared.revision !== document.revision || prepared.contentHash !== await hash(document.content)) throw new StudioError('VALIDATION_FAILED', '内容已改变，不能沿用之前的确认。');
       const { confirmationId, revision: confirmedRevision, contentHash, summary } = prepared;
       document.status = 'confirmed'; document.confirmation = { confirmationId, revision: confirmedRevision, contentHash, summary, confirmedAt: r.time(), evidenceKind: 'host_attestation', evidenceReference: a.evidenceReference };
-      await r.writeDocument(kind, kind === 'brief' ? `${projectPath(a)}/design-brief.json` : `${schemePath(a)}/rules.json`, document);
-      if (kind === 'rules') { const scheme = touch(r, await readScheme(r, a)); scheme.ruleRevision = document.revision; scheme.status = 'active'; await r.writeDocument('scheme', `${schemePath(a)}/scheme.json`, scheme); }
-      return { [kind]: document };
+      await r.writeDocument('brief', `${projectPath(a)}/design-brief.json`, document);
+      return { brief: document };
     } });
   define('get_scheme', { description: '读取明确方案。', input: object(s), data: object({ scheme: doc('scheme') }), handler: async (r, a) => ({ scheme: await readScheme(r, a) }) });
   define('create_scheme', { description: '从已确认项目建立空方案或独立复制；不切换视图。', input: input({ ...p, name: shortText, description: nullable(text), sourceSchemeId: identity.schemeId }, ['projectId', 'name']), data: object({ scheme: doc('scheme') }), mutates: true, persists: true,
@@ -60,7 +59,7 @@ export function registerProjectOperations(define) {
           const suffix = path.slice(schemePath(source).length + 1);
           if (suffix !== 'rules.json' && !/^matrix\/i-[^/]+\.json$/.test(suffix) && !/^primitives\/prim-[^/]+\.json$/.test(suffix)) continue;
           const value = touch(r, await r.storage.readJson(path)); value.schemeId = scheme.schemeId;
-          if (suffix === 'rules.json') { value.status = 'draft'; value.confirmation = null; }
+          if (suffix === 'rules.json') value.status = 'draft';
           if (value.variants) value.variants.forEach(v => { v.productionStatus = v.layers.length ? 'draft' : 'planned'; v.reviewStatus = 'unreviewed'; v.compiledRevision = null; });
           await r.storage.writeJson(`${schemePath(scheme)}/${suffix}`, value);
         }
@@ -77,12 +76,15 @@ export function registerProjectOperations(define) {
     await readScheme(r, a); const project = touch(r, await readProject(r, a.projectId)); project.preferredSchemeId = a.schemeId;
     await r.writeDocument('project', `${projectPath(a)}/project.json`, project); return { project };
   } });
-  define('get_design_rules', { description: '读取方案规则和确认版本。', input: object(s), data: object({ rules: doc('rules') }), handler: async (r, a) => ({ rules: await readRules(r, a) }) });
-  define('propose_design_rules', { description: '保存新规则草稿；不自动改变已有几何。', input: input({ ...s, content: ruleContentSchema }), data: object({ rules: doc('rules') }), mutates: true, persists: true, handler: async (r, a) => {
-    await confirmedBrief(r, a); await readScheme(r, a);
+  define('get_design_rules', { description: '读取 Agent 制定的方案规则及生产版本，不代表用户审核。', input: object(s), data: object({ rules: doc('rules') }), handler: async (r, a) => ({ rules: await readRules(r, a) }) });
+  define('set_design_rules', { description: '需求确认后由 Agent 保存可用于生产的方案规则，无需用户再次确认；不自动改变已有几何。', input: input({ ...s, content: ruleContentSchema }), data: object({ rules: doc('rules') }), mutates: true, persists: true, handler: async (r, a) => {
+    await confirmedBrief(r, a); const scheme = await readScheme(r, a);
+    if (scheme.status === 'archived' || (await readProject(r, a.projectId)).status === 'archived') throw new StudioError('VALIDATION_FAILED', '归档目标需要先恢复。');
     if (a.content.padding * 2 >= a.content.gridSize) throw new StudioError('VALIDATION_FAILED', '留白不能占满画布。');
-    const rules = { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, content: a.content, status: 'draft', confirmation: null };
-    await r.writeDocument('rules', `${schemePath(a)}/rules.json`, rules); return { rules };
+    const rules = { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, content: a.content, status: 'ready' };
+    await r.writeDocument('rules', `${schemePath(a)}/rules.json`, rules);
+    await r.writeDocument('scheme', `${schemePath(a)}/scheme.json`, { ...touch(r, scheme), ruleRevision: rules.revision, status: 'active' });
+    return { rules };
   } });
   define('list_vocabulary', { description: '读取项目图标语义与同义标签。', input: object(p), data: object({ icons: array(vocabularyItemSchema) }), handler: async (r, a) => ({ icons: (await readVocabulary(r, a)).icons }) });
   define('register_icons', { description: '登记独立图标的名称、含义、同义标签及用途，生成稳定身份。', input: input({ ...p, icons: array(semanticInput, { minItems: 1, maxItems: 100 }) }), data: object({ icons: array(vocabularyItemSchema) }), mutates: true, persists: true, handler: async (r, a) => {

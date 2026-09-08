@@ -5,6 +5,21 @@ const invalid = message => { throw new StudioError('VALIDATION_FAILED', message)
 const escaped = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]);
 const box = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
 
+/** Inspect a source operand independently of its parent's boolean result. */
+export function previewLayer(variant, layerId, options = {}) {
+  const isolate = layers => {
+    for (const layer of layers) {
+      if (layer.layerId === layerId) return layer;
+      const child = layer.children && isolate(layer.children);
+      if (child) return { layerId: layer.layerId, type: 'group', visible: layer.visible, transform: layer.transform, children: [child] };
+    }
+  };
+  const selected = isolate(variant.layers);
+  if (!selected) invalid('图层不存在。');
+  const { svg, bounds } = renderGeometry({ ...variant, layers: [selected] }, options);
+  return { svg, bounds };
+}
+
 /** Deterministic synchronous geometry; no DOM, filesystem, raw SVG input or raster. */
 export function renderGeometry(variant, { primitives = {}, lineCap = 'round', lineJoin = 'round' } = {}) {
   const scope = new paper.PaperScope();

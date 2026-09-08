@@ -14,15 +14,13 @@ export async function setup(storage = new MemoryStorage(), transport = null) {
   await call(studio, 'connect_library', { requestId: req(), create: true });
   const { project } = await call(studio, 'create_project', { requestId: req(), name: '合成笔记系统' });
   const p = { projectId: project.projectId };
-  const fields = Object.fromEntries(['purpose', 'goals', 'audience', 'usage', 'scope', 'constraints'].map(key => [key, { value: `合成${key}`, provenance: { kind: 'user', reference: null, awaitingConfirmation: false } }]));
+  const fields = Object.fromEntries(['purpose', 'stylePreferences', 'audience', 'usage', 'scope', 'constraints'].map(key => [key, { value: `合成${key}`, provenance: { kind: 'user', reference: null, awaitingConfirmation: false } }]));
   await call(studio, 'update_brief', { ...p, requestId: req(), content: { fields, vocabularyDraft: [] } });
   const { confirmation } = await call(studio, 'prepare_confirmation', p);
   await call(studio, 'confirm_brief', { ...p, requestId: req(), confirmationId: confirmation.confirmationId, evidenceReference: '测试用户确认' });
   const { scheme } = await call(studio, 'create_scheme', { ...p, requestId: req(), name: '基础方案' });
   const s = { ...p, schemeId: scheme.schemeId };
-  await call(studio, 'propose_design_rules', { ...s, requestId: req(), content: { gridSize: 16, padding: 1, strokeWidth: 1.25, cornerRadius: 1, lineCap: 'round', lineJoin: 'round', opticalNotes: [] } });
-  const { confirmation: ruleConfirmation } = await call(studio, 'prepare_confirmation', s);
-  await call(studio, 'confirm_design_rules', { ...s, requestId: req(), confirmationId: ruleConfirmation.confirmationId, evidenceReference: '测试规则确认' });
+  await call(studio, 'set_design_rules', { ...s, requestId: req(), content: { gridSize: 16, padding: 1, strokeWidth: 1.25, cornerRadius: 1, lineCap: 'round', lineJoin: 'round', opticalNotes: [] } });
   const { icons } = await call(studio, 'register_icons', { ...p, requestId: req(), icons: [{ name: '收件箱', concept: '集中接收的条目', tags: ['inbox', '接收'], usages: [] }] });
   const i = { ...s, iconId: icons[0].iconId };
   const { variants } = await call(studio, 'register_variants', { ...i, requestId: req(), variants: [{ size: 16, style: 'filled', weight: 'regular' }] });

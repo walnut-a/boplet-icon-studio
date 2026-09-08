@@ -30,7 +30,11 @@ export const confirmationSchema = object({
   confirmationId: id('cf'), revision, contentHash: { type: 'string', pattern: '^sha256-[a-f0-9]{64}$' },
   summary: confirmationSummary, confirmedAt: timestamp, evidenceKind: enumeration('host_attestation', 'verified_host_receipt'), evidenceReference: text,
 });
-const briefFields = Object.fromEntries(['purpose', 'goals', 'audience', 'usage', 'scope', 'constraints'].map(name => [name, briefFieldSchema]));
+const briefFields = Object.fromEntries(Object.entries({
+  purpose: '设计目的：为什么设计、要解决什么问题，不重复风格偏好。',
+  stylePreferences: '风格偏好：记录用户明确的审美倾向；无倾向可明确写不限定。不得把 Agent 提出的具体造型预设为需求，造型探索属于方案。',
+  audience: '目标用户。', usage: '实际使用场景。', scope: '本次设计和交付范围。', constraints: '必须遵守的边界；用户明确指定的造型约束可在此记录并保留来源。',
+}).map(([name, description]) => [name, { ...briefFieldSchema, description }]));
 export const briefContentSchema = object({
   fields: object(briefFields, []),
   vocabularyDraft: array(object({ name: shortText, concept: text, tags: array(shortText, { uniqueItems: true }), provenance: provenanceSchema })),
@@ -69,8 +73,8 @@ const definitions = {
   vocabulary: object({ ...header, projectId: identity.projectId, icons: array(vocabularyItemSchema) }),
   scheme: object({ ...header, projectId: identity.projectId, schemeId: identity.schemeId, name: shortText,
     description: nullable(text), status: enumeration('draft', 'active', 'archived'), ruleRevision: nullable(revision), sourceSchemeId: nullable(identity.schemeId) }),
-  rules: object({ ...header, projectId: identity.projectId, schemeId: identity.schemeId, status: versionStatus,
-    content: ruleContentSchema, confirmation: nullable(confirmationSchema) }),
+  rules: object({ ...header, projectId: identity.projectId, schemeId: identity.schemeId, status: enumeration('draft', 'ready', 'superseded'),
+    content: ruleContentSchema }),
   matrix: object({ ...header, projectId: identity.projectId, schemeId: identity.schemeId, iconId: identity.iconId,
     variants: array(variantSchema) }, undefined, { $defs: { layer: layerSchema } }),
   task: object({ ...header, projectId: identity.projectId, taskId: id('task'), batchId: nullable(id('batch')),
@@ -110,6 +114,6 @@ export function validateDocument(kind, document) {
   }
   if (kind === 'task' && (document.target.projectId !== document.projectId || document.progress.completed > document.progress.total)) throw new StudioError('VALIDATION_FAILED', '任务目标或进度无效。');
   if (['review', 'delivery'].includes(kind) && document.target.projectId !== document.projectId) throw new StudioError('VALIDATION_FAILED', '目标不属于文档项目。');
-  if (['brief', 'rules'].includes(kind) && document.status === 'confirmed' && document.confirmation?.revision !== document.revision) throw new StudioError('VALIDATION_FAILED', '确认记录必须绑定相同内容版本。');
+  if (kind === 'brief' && document.status === 'confirmed' && document.confirmation?.revision !== document.revision) throw new StudioError('VALIDATION_FAILED', '确认记录必须绑定相同内容版本。');
   return document;
 }

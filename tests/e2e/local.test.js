@@ -9,12 +9,13 @@ import { NodeStorage } from '../../src/storage/node.js';
 
 for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 HTTP'}：空目录到编译、界面、选区、导出、重开`, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'icon-e2e-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const serverOptions = { storage: await NodeStorage.open(directory), skill: { status: 'loaded', version: '0.1.0-dev.1', evidence: 'isolated-e2e' }, appDirectory: resolve('dist/app') };
+  const serverOptions = { storage: await NodeStorage.open(directory), skill: { status: 'loaded', version: '0.1.0-dev.1', evidence: 'isolated-e2e' }, appDirectory: resolve('dist/app'), requireUI: true };
   let server = await startServer(serverOptions); t.after(() => server.close());
   const browser = await chromium.launch({ channel: 'chrome', headless: true, args: native ? ['--enable-experimental-web-platform-features'] : [] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1903, height: 1320 } }); const errors=[]; page.on('pageerror',e=>errors.push(e.message));
   await page.goto(server.url);
-  if (native) await page.waitForFunction(async () => document.modelContext && (await document.modelContext.getTools()).length === 96);
+  await page.getByRole('button', { name: '连接已有目录', exact: true }).waitFor();
+  if (native) await page.waitForFunction(async () => document.modelContext && (await document.modelContext.getTools()).length === 95);
   const invoke = async (name, input = {}) => {
     const response = native ? null : await fetch(`${server.url}/operation`, { method: 'POST', headers: { Authorization: `Bearer ${server.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, input }) });
     let result = native ? await page.evaluate(async ({name,input}) => { const tools = await document.modelContext.getTools(); const tool = tools.find(t=>t.name==='icon_studio_v3_'+name); return JSON.parse(await document.modelContext.executeTool(tool,JSON.stringify(input))); }, {name,input}) : await response.json();
@@ -24,13 +25,47 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   const requestId = () => crypto.randomUUID();
   await invoke('connect_library', { create: true, requestId: requestId() });
   const { project } = await invoke('create_project', { requestId: requestId(), name: '合成笔记系统', purpose: '整理条目与项目' }); const p = { projectId: project.projectId };
-  const fields = Object.fromEntries(['purpose','goals','audience','usage','scope','constraints'].map(key => [key, { value: '合成测试：'+key, provenance: { kind: 'user', reference: null, awaitingConfirmation: false } }]));
+  const fields = Object.fromEntries(['purpose','stylePreferences','audience','usage','scope','constraints'].map(key => [key, { value: '合成测试：'+key, provenance: { kind: 'user', reference: null, awaitingConfirmation: false } }]));
   await invoke('update_brief', { ...p, requestId: requestId(), content: { fields, vocabularyDraft: [] } });
+  await invoke('navigate', { ...p, view: 'project', requestId: requestId() });
+  await page.reload();
+  await expect(page.locator('#navigation')).toBeHidden();
+  await expect(page.getByRole('button', { name: '返回项目库', exact: true })).toBeVisible();
+  await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveText(/确认需求/);
+  await expect(page.locator('.brief-instruction')).toHaveText('请在输入框中确认需求信息是否正确。如果不正确，请直接对话进行修改。如果需求信息没问题，请回复“需求已确认”。');
+  if (!native) { await mkdir('.impeccable/review', { recursive: true }); await page.screenshot({ path: '.impeccable/review/brief-confirmation-desktop.png', fullPage: true }); }
+  await expect(page.getByRole('heading', { name: '风格偏好', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '目标', exact: true })).toHaveCount(0);
+  await expect(page.locator('.workflow-progress')).not.toContainText('步骤');
+  assert.equal(await page.locator('.brief section').evaluateAll(sections => sections.every(section => {
+    const heading = section.querySelector('h2').getBoundingClientRect();
+    const body = section.querySelector('p').getBoundingClientRect();
+    return body.top >= heading.bottom && Math.abs(body.left - heading.left) < 1;
+  })), true, '每个字段名独占一行，内容在其下方左对齐');
+  assert.equal(await page.locator('#main input, #main textarea, #main [contenteditable=true]').count(), 0);
+  assert.equal(await page.locator('.workflow-steps button').count(), 0);
+  const briefBox = await page.locator('.brief-onboarding').boundingBox();
+  const bodyBox = await page.locator('body').boundingBox();
+  assert.ok(Math.abs(briefBox.x + briefBox.width / 2 - (bodyBox.x + bodyBox.width / 2)) < 2, '需求内容栏在扣除滚动条预留空间后的页面居中');
+  await page.setViewportSize({ width: 390, height: 844 });
+  if (!native) await page.screenshot({ path: '.impeccable/review/brief-confirmation-mobile.png', fullPage: true });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.getByRole('button', { name: 'EN', exact: true }).click();
+  await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveText(/Confirm brief/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.getByRole('button', { name: '中文', exact: true }).click();
+  await page.setViewportSize({ width: 1903, height: 1320 });
   let { confirmation } = await invoke('prepare_confirmation', p);
   await invoke('confirm_brief', { ...p, requestId: requestId(), confirmationId: confirmation.confirmationId, evidenceReference: '测试确认' });
+  await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveText(/生成方案/);
+  await expect(page.locator('#navigation')).toBeHidden();
   const { scheme } = await invoke('create_scheme', { ...p, requestId: requestId(), name: '基础方案' }); const s = { ...p, schemeId: scheme.schemeId };
-  await invoke('propose_design_rules', { ...s, requestId: requestId(), content: { gridSize: 16, padding: 1, strokeWidth: 1.25, cornerRadius: 1, lineCap: 'round', lineJoin: 'round', opticalNotes: [] } });
-  ({ confirmation } = await invoke('prepare_confirmation', s)); await invoke('confirm_design_rules', { ...s, requestId: requestId(), confirmationId: confirmation.confirmationId, evidenceReference: '测试规则' });
+  await expect(page.locator('#navigation')).toBeVisible();
+  await expect(page.locator('#navigation').getByRole('button', { name: '基础方案', exact: true })).toBeVisible();
+  await expect(page.locator('.brief-onboarding')).toHaveCount(0);
+  for (const name of ['C · 三','B · 二','A · 一']) await invoke('create_scheme', { ...p, name, requestId: requestId() });
+  await expect(page.locator('#navigation button').filter({hasText:/^[ABC] · /})).toHaveText(['A · 一','B · 二','C · 三']);
+  await invoke('set_design_rules', { ...s, requestId: requestId(), content: { gridSize: 16, padding: 1, strokeWidth: 1.25, cornerRadius: 1, lineCap: 'round', lineJoin: 'round', opticalNotes: [] } });
   const { icons } = await invoke('register_icons', { ...p, requestId: requestId(), icons: [{ name: '收件箱', concept: '集中接收的条目', tags: ['收件','inbox'], usages: [] }] }); const i = { ...s, iconId: icons[0].iconId };
   const { variants } = await invoke('register_variants', { ...i, requestId: requestId(), variants: [{ size: 16, style: 'outline', weight: 'regular' }] }); const v = { ...i, variantId: variants[0].variantId };
   const { batch } = await invoke('create_batch', { ...s, requestId: requestId(), targets: [{ iconId: v.iconId, variantId: v.variantId }] });
@@ -38,10 +73,52 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await invoke('apply_operations', { ...v, taskId: batch.taskIds[0], requestId: requestId(), operations: [{ op: 'add_layer', layer: { layerId: 'l-shell', name: '外壳', type: 'path', visible: true, drawing: 'stroke', strokeWidth: 1.25, closed: true,
     nodes: [[3,4],[13,4],[13,12],[3,12]].map((point,n) => ({ nodeId: 'n-'+n, point, in: null, out: null })) } }] });
   assert.equal((await invoke('compile_scheme',{ ...s,requestId:requestId() })).items[0].ok,true);
+  const { batch: inspectionBatch } = await invoke('create_batch', { ...s, requestId: requestId(), targets: [{ iconId: v.iconId, variantId: v.variantId }] });
+  await invoke('start_batch', { ...p, batchId: inspectionBatch.batchId, requestId: requestId() });
+  await invoke('apply_operations', { ...v, taskId: inspectionBatch.taskIds[0], requestId: requestId(), operations: [{op:'add_layer', layer:{layerId:'l-ring',name:'组合',type:'boolean',visible:true,operation:'subtract',children:[
+    {layerId:'l-outer',name:'外框',type:'rect',visible:true,drawing:'fill',strokeWidth:0,radius:1,x:5,y:6,width:6,height:4},
+    {layerId:'l-inner',name:'内空',type:'rect',visible:true,drawing:'fill',strokeWidth:0,radius:0,x:6,y:7,width:4,height:2},
+  ]}}] });
+  assert.equal((await invoke('compile_scheme',{ ...s,requestId:requestId() })).items[0].ok,true);
   await invoke('set_usage_bindings',{ ...v,requestId:requestId(),bindings:['toolbar'] });
   await invoke('navigate',{ ...s,view:'icons',requestId:requestId() });
   await page.goto(server.url); await page.getByRole('heading',{name:'图标列表',exact:true}).waitFor();
   await page.getByRole('button',{name:/收件箱/}).click(); await page.getByRole('button',{name:'下载 SVG',exact:true}).waitFor();
+  const { variants: larger } = await invoke('register_variants', {...i,requestId:requestId(),variants:[{size:64,style:'outline',weight:'regular'}]});
+  const largeTarget={...i,variantId:larger[0].variantId};
+  const {batch:largeBatch}=await invoke('create_batch',{...s,requestId:requestId(),targets:[{iconId:i.iconId,variantId:largeTarget.variantId}]});
+  await invoke('start_batch',{...p,batchId:largeBatch.batchId,requestId:requestId()});
+  await invoke('apply_operations',{...largeTarget,taskId:largeBatch.taskIds[0],requestId:requestId(),operations:[{op:'add_layer',layer:{layerId:'l-large',name:'大图标',type:'rect',visible:true,drawing:'stroke',strokeWidth:2,radius:4,x:12,y:12,width:40,height:40}}]});
+  await expect(page.getByRole('button',{name:'64 × 64 px · 描边 · 常规',exact:true})).toBeVisible();
+  const heading=await page.locator('.title h1').boundingBox(),switchBox=await page.locator('.preview-switch').boundingBox();
+  assert.ok(switchBox.x>heading.x+heading.width && Math.abs(switchBox.y-heading.y)<10,'模式切换在标题右侧');
+  const frameBefore=await page.locator('.frame').boundingBox();
+  await page.getByRole('button',{name:'64 × 64 px · 描边 · 常规',exact:true}).click();
+  await expect(page.locator('#inspector')).toContainText('64 × 64 px');
+  const frameAfter=await page.locator('.frame').boundingBox();
+  assert.ok(Math.abs(frameBefore.width-frameAfter.width)<1 && Math.abs(frameBefore.height-frameAfter.height)<1,'尺寸切换不改变预览框宽高');
+  await page.getByRole('button',{name:'16 × 16 px · 描边 · 常规',exact:true}).click();
+  await expect(page.locator('#inspector')).toContainText('16 × 16 px');
+  await page.getByRole('button',{name:'内空',exact:true}).click();
+  await expect(page.locator('.geometry-selection')).toBeVisible();
+  await expect(page.locator('.geometry-selection')).toHaveAttribute('data-layer-id','l-inner');
+  await expect(page.locator('.properties')).toContainText('宽度');
+  await expect(page.getByRole('button',{name:'内空',exact:true})).toBeFocused();
+  assert.deepEqual((await invoke('get_layer',{...v,layerId:'l-inner'})).preview.bounds,{left:6,top:7,right:10,bottom:9});
+  assert.equal(await page.locator('.selection-node').count(),0,'矩形不伪装成路径节点');
+  const indent=await page.getByRole('button',{name:'内空',exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft));
+  assert.ok(indent>await page.getByRole('button',{name:'组合',exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft)));
+  await page.getByRole('button',{name:'组合',exact:true}).click();
+  await expect(page.locator('.geometry-selection')).toHaveAttribute('data-layer-id','l-ring');
+  const actualCenter=await page.locator('.actual').evaluate(el=>{const items=[...el.children],first=items[0].getBoundingClientRect(),last=items.at(-1).getBoundingClientRect(),box=el.getBoundingClientRect();return Math.abs((first.left+last.right)/2-(box.left+box.right)/2);});
+  assert.ok(actualCenter<2,'实际尺寸对比居中');
+  if(!native) await page.screenshot({path:'.impeccable/review/layer-selection-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await expect.poll(()=>page.locator('.canvas svg').evaluate(el=>el.getBoundingClientRect().width)).toBeLessThan(350);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  if(!native) await page.screenshot({path:'.impeccable/review/layer-selection-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1903,height:1320});
+  await expect.poll(()=>page.locator('.canvas svg').evaluate(el=>el.getBoundingClientRect().width)).toBe(520);
   await page.getByRole('button',{name:'外壳',exact:true}).click(); await page.getByRole('button',{name:'n-0 point',exact:true}).waitFor();
   await page.getByRole('button',{name:'n-0 point',exact:true}).click();
   await expect(page.getByRole('button',{name:'n-0 point',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -49,6 +126,7 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await mkdir('.impeccable/review',{recursive:true});if(!native)await page.screenshot({path:'.impeccable/review/user-1903.png',fullPage:true});
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载 SVG',exact:true}).click();assert.match((await download).suggestedFilename(),/\.svg$/);
   await page.getByRole('button',{name:'应用场景',exact:true}).click();await page.locator('.scene-sample').first().waitFor();
+  assert.ok(await page.locator('.scene-section').first().evaluate(el=>{const box=el.getBoundingClientRect(),main=document.querySelector('main').getBoundingClientRect();return Math.abs((box.left+box.right-main.left-main.right)/2)<2;}),'场景内容栏在主内容区居中');
   selected=await invoke('get_selection');assert.equal(selected.selection.variantId,null);assert.equal(selected.selection.nodeId,null);
   if(!native)await page.screenshot({path:'.impeccable/review/desktop-scenes.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});if(!native)await page.screenshot({path:'.impeccable/review/mobile.png',fullPage:true});
@@ -66,7 +144,7 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await invoke('start_batch',{...p,batchId:followup.batchId,requestId:requestId()});
   await invoke('pause_task',{...p,taskId:followup.taskIds[0],requestId:requestId()});
   await server.close();server=await startServer(serverOptions);await page.goto(server.url);
-  if(native)await page.waitForFunction(async()=>document.modelContext&&(await document.modelContext.getTools()).length===96);
+  if(native)await page.waitForFunction(async()=>document.modelContext&&(await document.modelContext.getTools()).length===95);
   await invoke('connect_library',{create:false,requestId:requestId()});
   assert.equal((await invoke('list_projects',{})).items[0].projectId,p.projectId);
   assert.ok((await invoke('get_recovery',p)).tasks.some(task=>task.taskId===followup.taskIds[0]&&task.status==='paused'));

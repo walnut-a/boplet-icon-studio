@@ -4,6 +4,8 @@ import { doc, i, input, p, s, v } from './project-operations.js';
 import { applyOperations, compileVariant, locateLayer, readBatch, readPrimitives, readTask, validateGeometry, variantContent } from '../core/production.js';
 import { matrixPath, productionGate, projectPath, readMatrix, readScheme, readVocabulary, requireValue, schemePath, touch } from '../core/documents.js';
 import { StudioError } from './errors.js';
+import { previewLayer } from '../core/geometry.js';
+import { readRules } from '../core/documents.js';
 
 const layerRef = { $ref: '#/$defs/layer' };
 const node = object({ nodeId: id('n'), point, in: nullable(point), out: nullable(point) });
@@ -37,7 +39,7 @@ export async function schemeTargets(r, a) {
   return targets;
 }
 export function registerProductionOperations(define) {
-  define('create_batch', { description: '按已确认需求与规则登记显式图标变体任务，不执行几何。', input: input({ ...s, targets: array(batchTarget, { minItems: 1, maxItems: 1000 }) }), data: object({ batch: doc('batch') }), mutates: true, persists: true, handler: async (r, a) => {
+  define('create_batch', { description: '按已确认需求与已保存规则登记显式图标变体任务，不执行几何。', input: input({ ...s, targets: array(batchTarget, { minItems: 1, maxItems: 1000 }) }), data: object({ batch: doc('batch') }), mutates: true, persists: true, handler: async (r, a) => {
     const { brief, rules } = await productionGate(r, a);
     const unique = a.targets.map(t => `${t.iconId}/${t.variantId}`); if (new Set(unique).size !== unique.length) throw new StudioError('VALIDATION_FAILED', '批次目标重复。');
     for (const target of a.targets) requireValue((await readMatrix(r, { ...a, ...target })).variants.find(v => v.variantId === target.variantId && v.status === 'active'));
@@ -74,7 +76,12 @@ export function registerProductionOperations(define) {
   } });
   define('apply_operations', { description: '按登记任务原子替换一个图标矩阵；严格显式几何、节点、组合及组件操作。', input: { ...input({ ...v, taskId: id('task'), operations: array(geometryOperations, { minItems: 1, maxItems: 1000 }) }), $defs: { layer: layerSchema } }, data: object({ matrix: doc('matrix') }), mutates: true, persists: true, handler: applyOperations });
   define('get_icon', { description: '读取当前持久矩阵与语义，不隐式编译。', input: object(i), data: object({ matrix: doc('matrix'), icon: vocabularyItemSchema }), handler: async (r, a) => ({ matrix: await readMatrix(r, a), icon: requireValue((await readVocabulary(r, a)).icons.find(i => i.iconId === a.iconId)) }) });
-  define('get_layer', { description: '读取明确图层、路径节点和控制柄坐标。', input: object({ ...v, layerId: id('l') }), data: { ...object({ layer: layerRef }), $defs: { layer: layerSchema } }, handler: async (r, a) => ({ layer: requireValue(locateLayer(requireValue((await readMatrix(r, a)).variants.find(v => v.variantId === a.variantId)).layers, a.layerId)).layer }) });
+  define('get_layer', { description: '读取图层、节点坐标及包含祖先变换的独立轮廓与边界；不修改生产几何。', input: object({ ...v, layerId: id('l') }), data: { ...object({ layer: layerRef, preview: object({ svg: { type: 'string', maxLength: 8 * 1024 * 1024 }, bounds }) }), $defs: { layer: layerSchema } }, handler: async (r, a) => {
+    const variant = requireValue((await readMatrix(r, a)).variants.find(v => v.variantId === a.variantId));
+    const rules = await readRules(r, a), primitives = await readPrimitives(r, a);
+    const layer = requireValue(locateLayer(variant.layers, a.layerId)).layer;
+    return { layer, preview: previewLayer(variant, a.layerId, { primitives, ...rules.content }) };
+  } });
   define('preview_icon', { description: '按需绘制当前草稿，按内容哈希缓存，不将预览作为生产 SVG。', input: object(v), data: object({ svg: { type: 'string', maxLength: 8 * 1024 * 1024 }, bounds, contentHash: text, sourceRevision: revision }), handler: async (r, a) => {
     const c = await variantContent(r, a); r.previewCache ??= new Map();
     let preview = r.previewCache.get(c.contentHash);

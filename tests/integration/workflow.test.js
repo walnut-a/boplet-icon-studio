@@ -19,7 +19,7 @@ test('需求到独立方案和变体登记可重开，标签是有内容的语�
   const reopened = createStudio({ storage, skill });
   await call(reopened, 'connect_library', { create: false, requestId: req() });
   assert.equal((await call(reopened, 'get_brief', p)).brief.status, 'confirmed');
-  assert.equal((await call(reopened, 'get_design_rules', s)).rules.status, 'confirmed');
+  assert.equal((await call(reopened, 'get_design_rules', s)).rules.status, 'ready');
   assert.equal((await call(reopened, 'list_variants', i)).variants.length, 1);
   assert.equal((await call(studio, 'list_vocabulary', p)).icons[0].tags[0], 'inbox');
   const copy = await call(studio, 'create_scheme', { ...p, requestId: req(), name: '副本', sourceSchemeId: s.schemeId });

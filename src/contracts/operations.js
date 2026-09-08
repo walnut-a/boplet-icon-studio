@@ -20,7 +20,7 @@ const domains = [
   ['source', 'A3', 'list_sources request_source_access read_source record_source'],
   ['vocabulary', 'A2', 'list_vocabulary register_icons update_icon_metadata retire_icon restore_icon'],
   ['scheme', 'A2', 'list_schemes get_scheme create_scheme update_scheme archive_scheme restore_scheme set_preferred_scheme'],
-  ['rules', 'A3', 'get_design_rules propose_design_rules confirm_design_rules get_impact'],
+  ['rules', 'A3', 'get_design_rules set_design_rules get_impact'],
   ['variant', 'A3', 'list_variants register_variants retire_variant restore_variant'],
   ['batch', 'A3', 'create_batch get_batch update_batch start_batch'],
   ['task', 'A3', 'list_tasks get_task report_task_progress pause_task resume_task cancel_task'],
@@ -64,11 +64,11 @@ define('get_capabilities', {
 });
 define('get_workflow', {
   description: '读取当前实际起始状态和下一步，不将下载或静态页面访问当成 Skill 已加载。', requiresSkill: false, requiresStorage: false,
-  data: object({ stage: enumeration('skill_required', 'storage_required', 'project_ready', 'brief_required', 'design_ready'), nextActions: array(text), scope: { const: 'full_skill' } }),
+  data: object({ stage: enumeration('skill_required', 'html_required', 'storage_required', 'project_ready', 'brief_required', 'design_ready'), nextActions: array(text), scope: { const: 'full_skill' } }),
   handler: async runtime => {
-    let stage = runtime.skill.status !== 'loaded' ? 'skill_required' : !runtime.library ? 'storage_required' : 'project_ready';
+    let stage = runtime.skill.status !== 'loaded' ? 'skill_required' : runtime.requireUI && !runtime.attached ? 'html_required' : !runtime.library ? 'storage_required' : 'project_ready';
     if (stage === 'project_ready' && runtime.view.projectId) stage = (await getBrief(runtime, { projectId: runtime.view.projectId })).brief.status === 'confirmed' ? 'design_ready' : 'brief_required';
-    return { stage, nextActions: { skill_required: [], storage_required: ['connect_library'], project_ready: ['list_projects', 'create_project'], brief_required: ['get_brief', 'update_brief', 'validate_brief', 'prepare_confirmation'], design_ready: ['list_schemes', 'get_design_rules', 'list_tasks', 'get_recovery'] }[stage], scope: 'full_skill' };
+    return { stage, nextActions: { skill_required: [], html_required: ['get_view_context'], storage_required: ['connect_library'], project_ready: ['list_projects', 'create_project'], brief_required: ['get_brief', 'update_brief', 'validate_brief', 'prepare_confirmation'], design_ready: ['list_schemes', 'get_design_rules', 'list_tasks', 'get_recovery'] }[stage], scope: 'full_skill' };
   },
 });
 define('get_session', {
@@ -108,7 +108,7 @@ define('open_project', { description: '读取并切换本会话到明确项目�
   input: object({ requestId, ...project }), data: viewSchema, mutates: true,
   handler: async (runtime, args) => { await readProject(runtime, args.projectId); runtime.resetView(args.projectId); return runtime.view; } });
 define('get_brief', { description: '读取项目当前需求草稿或确认稿；初始项目允许缺项。', input: object(project), data: object({ brief: doc('brief') }), handler: getBrief });
-define('list_schemes', { description: '读取当前项目方案；零方案返回空列表，不能借用其他项目的方案。',
+define('list_schemes', { description: '按名称自然升序读取当前项目方案（先排序后分页）；零方案返回空列表。',
   input: object({ ...project, ...page }, ['projectId']), data: pageOf(doc('scheme')), handler: listSchemes });
 
 registerProjectOperations(define);

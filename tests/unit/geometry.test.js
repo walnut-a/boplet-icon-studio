@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderGeometry } from '../../src/core/geometry.js';
+import { renderGeometry, previewLayer } from '../../src/core/geometry.js';
 const rect = (layerId, x, y, width, height) => ({ layerId, name: '形状', type: 'rect', visible: true, drawing: 'fill', strokeWidth: 0, radius: 0, x, y, width, height });
 const variant = layers => ({ size: 24, layers });
+test('选中布尔子图层显示原始轮廓，包含祖先变换且不改变生产结果', () => {
+  const source = variant([{ layerId: 'l-group', type: 'group', visible: true, transform: [2,0,0,2,1,2], children: [
+    { layerId: 'l-bool', type: 'boolean', visible: true, operation: 'subtract', transform: [1,0,0,1,2,1], children: [rect('l-outer',0,0,8,8), rect('l-inner',2,2,2,2)] },
+  ] }]);
+  const before = JSON.stringify(source), rendered = renderGeometry(source).svg;
+  const selected = previewLayer(source, 'l-inner');
+  assert.deepEqual(selected.bounds, { left: 9, top: 8, right: 13, bottom: 12 });
+  assert.match(selected.svg, /<path/);
+  assert.deepEqual(previewLayer(source, 'l-bool').bounds, {left:5,top:4,right:21,bottom:20});
+  assert.equal(JSON.stringify(source), before);
+  assert.equal(renderGeometry(source).svg, rendered);
+  assert.throws(() => previewLayer(source, 'l-missing'), /不存在/);
+});
 test('曲线边界计算实际极值，不使用控制柄包围盒', () => {
   const result = renderGeometry(variant([{ layerId: 'l-path', name: '曲线', visible: true, type: 'path', drawing: 'stroke', strokeWidth: 2, closed: false,
     nodes: [{ nodeId: 'n-a', point: [2, 2], in: null, out: [2, 14] }, { nodeId: 'n-b', point: [14, 2], in: [14, 14], out: null }] }]));

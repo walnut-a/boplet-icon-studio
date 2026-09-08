@@ -47,7 +47,7 @@ export async function productionGate(r, a) {
   const rules = await readRules(r, a);
   if (scheme.status === 'archived' || (await readProject(r, a.projectId)).status === 'archived') throw new StudioError('VALIDATION_FAILED', '归档目标需要先恢复。');
   if (a.iconId && !(await readVocabulary(r,a)).icons.some(icon=>icon.iconId===a.iconId&&icon.status==='active')) throw new StudioError('VALIDATION_FAILED','图标已退役或不存在，需要先恢复。');
-  if (rules.status !== 'confirmed' || scheme.ruleRevision !== rules.revision) throw new StudioError('BRIEF_UNCONFIRMED', '请先确认当前方案规则。');
+  if (rules.status !== 'ready' || scheme.ruleRevision !== rules.revision) throw new StudioError('VALIDATION_FAILED', 'Agent 需先保存当前方案规则，无需用户再次确认。');
   return { brief, scheme, rules };
 }
 export async function readOptional(r, path, fallback) {

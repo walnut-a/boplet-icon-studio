@@ -81,6 +81,7 @@ export async function listSchemes(runtime, args) {
     if (scheme.projectId !== args.projectId || scheme.schemeId !== match[2]) throw new StudioError('VALIDATION_FAILED', '方案身份与位置不一致。');
     items.push(scheme);
   }
+  items.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }) || a.createdAt.localeCompare(b.createdAt) || a.schemeId.localeCompare(b.schemeId));
   const offset = args.offset ?? 0;
   const limit = args.limit ?? 48;
   return { items: items.slice(offset, offset + limit), total: items.length, offset, limit };

@@ -16,9 +16,9 @@ test('需求多文件发布失败，当前引用仍能读回原内容，显式�
   const {studio,storage,p}=await setup(); const before=await call(studio,'get_brief',p);
   const write=storage.writeJson.bind(storage);let fail=true;
   storage.writeJson=async(path,data)=>{if(fail&&path.endsWith('/project.json')){fail=false;throw new StudioError('SAVE_FAILED','模拟项目指针发布失败')}return write(path,data)};
-  const content=structuredClone(before.brief.content);content.fields.goals.value='新的目标';
+  const content=structuredClone(before.brief.content);content.fields.stylePreferences.value='新的风格偏好';
   const result=await studio.execute('update_brief',{...p,requestId:req(),content});assert.equal(result.ok,false);
   assert.deepEqual(await call(studio,'get_brief',p),before);
   await call(studio,'update_brief',{...p,requestId:req(),content});
-  assert.equal((await call(studio,'get_brief',p)).brief.content.fields.goals.value,'新的目标');
+  assert.equal((await call(studio,'get_brief',p)).brief.content.fields.stylePreferences.value,'新的风格偏好');
 });

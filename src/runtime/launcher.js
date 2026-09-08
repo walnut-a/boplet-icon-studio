@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { NodeStorage, defaultLibraryPath } from '../storage/node.js';
 import { startServer } from './server.js';
 import { hash } from '../core/documents.js';
+import { access } from 'node:fs/promises';
 
 export const defaultConfigPath = () => process.platform === 'win32'
   ? join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'Icon Studio')
@@ -10,7 +11,12 @@ export const defaultConfigPath = () => process.platform === 'win32'
 const optional = async (storage, path) => { try { return await storage.readJson(path); } catch (e) { if (e.code === 'TARGET_NOT_FOUND') return null; throw e; } };
 
 /** Host utility, not a business CLI. No old-project detection, migration or foreign process cleanup. */
-export async function launch({ root, configDirectory = defaultConfigPath(), appDirectory, buildId = null, skill, sources, updateSource = null } = {}) {
+export async function launch({ root, configDirectory = defaultConfigPath(), appDirectory, buildId = null, skill, sources, updateSource = null, htmlConsent } = {}) {
+  // A fresh host attestation is required before touching disk or reusing an instance.
+  if (htmlConsent?.status !== 'granted' || typeof htmlConsent.evidence !== 'string' || !htmlConsent.evidence.trim()) throw Error('必须先告知用户并取得使用本地或在线 HTML 容器的明确同意；未同意，不启动。');
+  if (!appDirectory) throw Error('缺少 HTML 容器，不能以无页面模式启动。');
+  try { await Promise.all(['index.html', 'app.js', 'style.css'].map(file => access(join(appDirectory, file)))); }
+  catch { throw Error('HTML 容器资产不完整，不能启动。'); }
   const config = await NodeStorage.open(configDirectory, { create: true });
   const preference = await optional(config, 'preferences.json');
   const directory = resolve(root ?? preference?.root ?? defaultLibraryPath());
@@ -29,7 +35,7 @@ export async function launch({ root, configDirectory = defaultConfigPath(), appD
       }
     } catch { /* A stale record is not permission to stop another listener. */ }
   }
-  const server = await startServer({ storage, sources, skill, appDirectory, buildId, updateSource, updateCache: config });
+  const server = await startServer({ storage, sources, skill, appDirectory, buildId, updateSource, updateCache: config, requireUI: true });
   const invoke = async (name, input) => fetch(`${server.url}/operation`, { method: 'POST', headers: { Authorization: `Bearer ${server.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, input }) }).then(r => r.json());
   try {
     const connected = await invoke('connect_library', { create: true, requestId: crypto.randomUUID() });

@@ -8,13 +8,16 @@ import { hash } from '../core/documents.js';
 const version = '__SKILL_VERSION__';
 const directory = process.argv[2];
 if (process.argv.includes('--help')) {
-  console.log('用法：node runtime/start.mjs [用户授权的数据目录]\n首次启动前在对话中确认目录。未传目录使用已记住的目录或系统文稿目录。');
+  console.log('用法：node runtime/start.mjs [用户授权的数据目录]\n启动前必须告知用户 Skill 依赖本地或在线 HTML 容器并取得同意；同时确认目录。未同意，不启动。未传目录使用已记住的目录或系统文稿目录。');
 } else {
   const loaded = process.env.ICON_STUDIO_SKILL_LOADED === version;
   if (!loaded) { console.error('请先完整读取此包 SKILL.md，再设置 ICON_STUDIO_SKILL_LOADED 为包版本；这表示宿主加载声明，不是安装签名。'); process.exitCode = 1; }
-  else {
+  else if (process.env.ICON_STUDIO_HTML_CONSENT !== 'granted' || !process.env.ICON_STUDIO_HTML_CONSENT_REFERENCE?.trim()) {
+    console.error('此 Skill 必须通过本地或在线 HTML 页面运行。请先在对话中取得用户明确同意，再设置 ICON_STUDIO_HTML_CONSENT=granted 和 ICON_STUDIO_HTML_CONSENT_REFERENCE 为该次答复的引用；拒绝或未回答时不得启动。'); process.exitCode = 1;
+  } else {
     try {
       const service = await launch({ root: directory, configDirectory: process.env.ICON_STUDIO_CONFIG_DIRECTORY,
+        htmlConsent: { status: 'granted', evidence: process.env.ICON_STUDIO_HTML_CONSENT_REFERENCE },
         buildId: await hash(await readFile(new URL('../package-manifest.json',import.meta.url),'utf8')),
         sources: process.env.ICON_STUDIO_SOURCE_DIRECTORY ? await NodeStorage.open(process.env.ICON_STUDIO_SOURCE_DIRECTORY) : null,
         appDirectory: fileURLToPath(new URL('../app/', import.meta.url)), skill: { status: 'loaded', version, evidence: 'host_attestation:SKILL.md read' } });

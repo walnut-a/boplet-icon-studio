@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { createStudio } from '../core/studio.js';
 
 const media = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-export async function startServer({ storage, sources, skill, appDirectory, buildId = null, updateSource = null, updateCache = null, port = 0 } = {}) {
+export async function startServer({ storage, sources, skill, appDirectory, buildId = null, updateSource = null, updateCache = null, port = 0, requireUI = false } = {}) {
   const sessions = new Map();
   const makeSession = () => {
     const token = crypto.randomUUID() + crypto.randomUUID();
-    const studio = createStudio({ storage, sources, skill, updateSource, updateCache, transport: 'local_http' }); sessions.set(token, studio); return { token, studio };
+    const studio = createStudio({ storage, sources, skill, updateSource, updateCache, requireUI, transport: 'local_http' }); sessions.set(token, studio); return { token, studio };
   };
   const initial = makeSession();
   const server = createServer(async (request, response) => {

@@ -4,11 +4,12 @@
 
 | 阶段 | 操作及回执 |
 | --- | --- |
+| 启动同意 | 告知 HTML 是必需中介并询问是否允许；真实答复同意后才启动或复用，拒绝/未回答则停止。打开绑定页面，get_workflow 不再为 html_required 后进入设计。 |
 | 连接 | 启动器已连接初始会话；新会话 `connect_library {create:false,requestId}`，`get_workflow` |
 | 项目 | `list_projects {}`；用户要新项目时 `create_project {name,requestId}`，保存 projectId；`open_project` |
 | 需求 | `update_brief {projectId,content,requestId}`，content.fields 六项，每项 `{value,provenance:{kind:'user',reference:null,awaitingConfirmation:false}}`，vocabularyDraft 为数组 |
 | 确认 | `validate_brief` → `prepare_confirmation {projectId}` → 聊天展示完整摘要，等待用户 → `confirm_brief {projectId,confirmationId,evidenceReference,requestId}` |
-| 方案 | `create_scheme {projectId,name,requestId}` 保存 schemeId；`propose_design_rules` content 包含 gridSize/padding/strokeWidth/cornerRadius/lineCap/lineJoin/opticalNotes；prepare_confirmation 增加 schemeId，等确认后 confirm_design_rules |
+| 方案 | `create_scheme {projectId,name,requestId}` 保存 schemeId；Agent 直接 `set_design_rules {projectId,schemeId,content,requestId}`，content 包含 gridSize/padding/strokeWidth/cornerRadius/lineCap/lineJoin/opticalNotes。规则保存为 ready 后连续登记、绘制和编译，不再次请求用户确认参数，不停在空方案。 |
 | 登记 | `register_icons {projectId,icons:[{name,concept,tags,usages}],requestId}`；`register_variants {projectId,schemeId,iconId,variants:[{size:16,style:'outline',weight:'regular'}],requestId}` |
 | 计划 | `create_batch {projectId,schemeId,targets:[{iconId,variantId}],requestId}`；`start_batch {projectId,batchId,requestId}`，保存 taskIds |
 | 绘制 | `apply_operations {projectId,schemeId,iconId,variantId,taskId,operations:[…],requestId}`；严格按 layers schema，不传 raw SVG |
@@ -26,6 +27,6 @@
 
 ## 不支持 WebMCP
 
-照上述序列逐次 POST `/operation`：`{name:'create_project',input:{name:'…',requestId:'…'}}`。输入输出与 WebMCP 相同。Agent 可以没有浏览器操作能力；页面轮询同一会话核心，用户仍能看到数据更新和手动选区，Agent 通过 get_selection 读取。
+照上述序列逐次 POST `/operation`：`{name:'create_project',input:{name:'…',requestId:'…'}}`。输入输出与 WebMCP 相同。Agent 可以没有浏览器操作能力，但 HTML 不可省略，可请用户打开页面；页面轮询同一会话核心，用户仍能看到数据更新和手动选区，Agent 通过 get_selection 读取。
 
 回执 accepted 使用原 operationId 读取完成，不重新发起；短暂失败检查实际数据再决定。等待用户确认、目录授权和下载选择是正常交互，不伪造 completed。

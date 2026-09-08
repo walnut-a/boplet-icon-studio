@@ -4,6 +4,9 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { chromium } from '@playwright/test';
 import { buildSkill, inspectPackage } from '../../scripts/package.js';
 import { produce, call, req } from '../fixtures/workflow.js';
 
@@ -13,8 +16,14 @@ test('白名单包脱离仓库依赖启动、离线重开，卸载不删除独�
   await buildSkill(packageDirectory); const report = await inspectPackage(packageDirectory);
   assert.equal(report.ok, true); assert.ok(report.files.includes('runtime/start.mjs')); assert.ok(report.files.includes('contracts.json'));
   const data = join(root, 'user-data'), config = join(root, 'config');
+  const environment = { ...process.env, NODE_PATH: '', ICON_STUDIO_CONFIG_DIRECTORY: config, ICON_STUDIO_SKILL_LOADED: '0.1.0-dev.1', ICON_STUDIO_HTML_CONSENT: 'granted', ICON_STUDIO_HTML_CONSENT_REFERENCE: '合成用户允许 HTML 测试' };
+  for (const consent of [undefined, 'denied']) {
+    const denied = spawnSync(process.execPath, [join(packageDirectory, 'runtime/start.mjs'), data], { cwd: root, env: { ...environment, ICON_STUDIO_HTML_CONSENT: consent }, encoding: 'utf8', timeout: 5000 });
+    assert.equal(denied.status, 1); assert.match(denied.stderr, /HTML/);
+    assert.equal(existsSync(data), false); assert.equal(existsSync(config), false);
+  }
   async function start() {
-    const child = spawn(process.execPath, [join(packageDirectory, 'runtime/start.mjs'), data], { cwd: root, env: { ...process.env, NODE_PATH: '', ICON_STUDIO_CONFIG_DIRECTORY: config, ICON_STUDIO_SKILL_LOADED: '0.1.0-dev.1' }, stdio: ['ignore','pipe','pipe'] });
+    const child = spawn(process.execPath, [join(packageDirectory, 'runtime/start.mjs'), data], { cwd: root, env: environment, stdio: ['ignore','pipe','pipe'] });
     t.after(() => { if (child.exitCode === null) child.kill('SIGTERM'); });
     let output = '', errors = '';
     child.stderr.on('data', x => { errors += x; });
@@ -27,6 +36,10 @@ test('白名单包脱离仓库依赖启动、离线重开，卸载不删除独�
   }
   const first = await start(); assert.equal((await fetch(first.receipt.url+'/health').then(r=>r.json())).ready,true);
   const transport={execute:(name,input)=>fetch(first.receipt.url+'/operation',{method:'POST',headers:{Authorization:`Bearer ${first.receipt.token}`,'Content-Type':'application/json'},body:JSON.stringify({name,input})}).then(r=>r.json())};
+  assert.equal((await call(transport, 'get_workflow')).stage, 'html_required');
+  const browser = await chromium.launch({ channel: 'chrome', headless: true }); t.after(() => browser.close());
+  const page = await browser.newPage(); await page.goto(first.receipt.url);
+  await page.getByRole('heading', { name: '项目库', exact: true }).waitFor();
   const {s,target}=await produce(undefined,transport);
   assert.ok((await call(transport,'compile_scheme',{...s,requestId:req()})).items.every(item=>item.ok));
   const {delivery}=await call(transport,'prepare_export',{...target,scope:'variant',kind:'svg',requestId:req()});
