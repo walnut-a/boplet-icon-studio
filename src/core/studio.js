@@ -27,7 +27,7 @@ export function createStudio({ storage, sources = null, updateSource = null, upd
       this.view = { contextId: id('ctx'), view: projectId ? 'project' : 'library', projectId, options: this.viewOptions, uiStatus: this.attached ? 'attached' : 'unattached',
         selection: { projectId: null, schemeId: null, iconId: null, variantId: null, layerId: null, nodeId: null, handle: null } };
     },
-    storageStatus() { return { connected: Boolean(this.library), kind: this.storage?.kind ?? null, libraryId: this.library?.libraryId ?? null }; },
+    storageStatus() { return { connected: Boolean(this.library), kind: this.storage?.kind ?? null, libraryId: this.library?.libraryId ?? null, location: this.library && this.storage?.kind === 'node' ? this.storage.identity : null }; },
     async readDocument(kind, path) { return validateDocument(kind, await this.storage.readJson(path)); },
     async writeDocument(kind, path, document) { validateDocument(kind, document); await this.storage.writeJson(path, document); },
   };

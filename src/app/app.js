@@ -3,9 +3,11 @@ import { zipSync, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main'), navigation = $('#navigation'), inspector = $('#inspector');
+let runtimeInfo = '';
 let token, context, capabilities, rendering = false, lastSnapshot = '', language = localStorage.getItem('icon-studio-language') ?? 'zh', options = { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 };
 const translations = { '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层或节点查看属性。': 'Select a layer or node to inspect it.', '设计目的': 'Purpose', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
 Object.assign(translations, {
+  '项目信息': 'Project information', '存储位置': 'Storage location', '未连接': 'Not connected',
   '风格偏好': 'Style preferences',
   '步骤': 'Steps', '确认需求': 'Confirm brief', '生成方案': 'Generate schemes', '微调细节': 'Refine details',
   '请在输入框中确认需求信息是否正确。如果不正确，请直接对话进行修改。如果需求信息没问题，请回复“需求已确认”。': 'Confirm in the conversation whether the brief is correct. If not, describe the changes there. If everything is correct, reply “Brief confirmed”.',
@@ -17,6 +19,7 @@ const rid = () => crypto.randomUUID();
 const error = message => { $('#error').textContent = message; $('#error').hidden = !message; };
 const button = (label, action, attrs = '') => `<button data-action="${action}" ${attrs}>${esc(t(label))}</button>`;
 const empty = (title, description = '') => `<div class="empty"><h2>${esc(t(title))}</h2><p>${esc(t(description))}</p></div>`;
+const storageDetails = storage => `<section class="project-storage"><h2>${esc(t('存储位置'))}</h2><p id="storage-location">${esc(storage.location ?? t(storage.connected ? '未提供' : '未连接'))}</p><small>${esc(runtimeInfo)}</small><div class="storage-actions">${button('刷新', 'refresh', 'id="refresh"')}${button('断开目录', 'disconnect', `id="disconnect" ${storage.connected ? '' : 'disabled'}`)}</div></section>`;
 const scope = keys => Object.fromEntries(keys.map(k => [k, context.selection[k]]).filter(([, value]) => value));
 const iconScope = () => scope(['projectId', 'schemeId', 'iconId']);
 const variantScope = () => scope(['projectId', 'schemeId', 'iconId', 'variantId']);
@@ -68,24 +71,28 @@ async function render(force = false) {
     if (!force && snapshot === lastSnapshot) return;
     lastSnapshot = snapshot;
     const focused = document.activeElement?.id; const selectionStart = document.activeElement?.selectionStart;
-    $('#project-label').textContent = project?.name ?? ''; $('#language').textContent = language === 'zh' ? 'EN' : '中文'; $('#properties-label').textContent = t('属性'); $('#refresh').textContent = t('刷新'); $('#disconnect').textContent = t('断开目录');
+    $('#project-label').textContent = project?.name ?? '产品图标工坊'; $('#language').textContent = language === 'zh' ? 'EN' : '中文';
     const onboarding = next.view === 'project' && Boolean(project) && schemes.length === 0;
+    $('#library-back').hidden = !project; $('#library-back').setAttribute('aria-label', t('返回项目库')); $('#library-back').title = t('返回项目库');
+    $('#brief-link').hidden = !project; $('#brief-link').textContent = t('项目信息');
+    $('#project-info').hidden = !project;
+    $('#brief-link').setAttribute('aria-current', next.view === 'project' ? 'page' : 'false');
     navigation.hidden = onboarding;
     $('.workspace-body').classList.toggle('is-onboarding', onboarding);
-    navigation.innerHTML = onboarding ? '' : project ? `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav><div class="nav-footer">${button('需求', 'project', 'class="quiet"')}${button('返回项目库', 'library', 'class="quiet"')}</div>` : `<h2>${esc(t('项目'))}</h2><nav>${button('项目库', 'library', 'aria-current="page"')}</nav>`;
+    navigation.innerHTML = onboarding ? '' : project ? `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav>` : `<h2>${esc(t('项目'))}</h2><nav>${button('项目库', 'library', 'aria-current="page"')}</nav>`;
     inspector.hidden = true; inspector.innerHTML = '';
     if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); return; }
     if (next.view === 'library') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('项目库'))}</h1></div>` + (!data.items.length ? empty('暂无项目', '在对话中描述设计需求，即可开始一个新项目。') : `<div class="project-list">${data.items.map(p => `<button class="project-row" data-action="open-project" data-id="${p.projectId}"><span><strong>${esc(p.name)}</strong><small>${esc(p.purpose ?? '')}</small></span><small>${esc(p.updatedAt.slice(0, 10))}</small></button>`).join('')}</div>`);
+      main.innerHTML += storageDetails(storage);
     } else if (next.view === 'project') {
       const labels = { purpose: '设计目的', stylePreferences: '风格偏好', audience: '用户', usage: '使用场景', scope: '范围', constraints: '约束' };
       const brief = `<div class="brief">${Object.entries(labels).map(([key, label]) => `<section><h2>${esc(t(label))}</h2><p>${esc(data.brief.content.fields[key]?.value ?? t('未提供'))}</p></section>`).join('')}</div>`;
       const confirmed = data.brief.status === 'confirmed';
       main.innerHTML = onboarding ? `<div class="brief-onboarding">
-        <div class="onboarding-back">${button('返回项目库', 'library', 'class="quiet"')}</div>
         <div class="workflow-progress"><ol class="workflow-steps" aria-label="${esc(t('步骤'))}">${['确认需求', '生成方案', '微调细节'].map((label, index) => `<li${index === (confirmed ? 1 : 0) ? ' aria-current="step"' : ''}><span class="step-number" aria-hidden="true">${index + 1}</span><span>${esc(t(label))}</span></li>`).join('')}</ol></div>
         <header class="brief-intro"><h1>${esc(t(confirmed ? '生成方案' : '确认需求'))}</h1><p class="brief-instruction">${esc(t(confirmed ? '需求已确认。请在对话中继续生成方案。' : '请在输入框中确认需求信息是否正确。如果不正确，请直接对话进行修改。如果需求信息没问题，请回复“需求已确认”。'))}</p></header>
-        ${brief}</div>` : `<div class="heading"><h1>${esc(project.name)}</h1></div>${brief}`;
+        ${brief}${storageDetails(storage)}</div>` : `<div class="project-details"><div class="heading"><h1>${esc(t('项目信息'))}</h1></div>${brief}${storageDetails(storage)}</div>`;
     } else if (next.view === 'icons') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('图标列表'))}</h1>${button('导出', 'export-scheme')}</div><div class="filters"><input id="search" type="search" placeholder="${esc(t('搜索图标'))}" aria-label="${esc(t('搜索图标'))}" value="${esc(options.search)}">${data.tags.length ? `<label>${esc(t('标签'))}<select id="tags"><option value="">${esc(t('全部'))}</option>${data.tags.map(tag => `<option ${tag === options.tag ? 'selected' : ''}>${esc(tag)}</option>`).join('')}</select></label>` : ''}<span class="count">${data.total} ${language === 'en' ? 'icons' : '图标'}</span></div><div class="icon-grid">${data.items.map(({ icon, variants }) => `<button class="icon-tile" data-action="icon" data-id="${icon.iconId}" data-variant="${variants[0]?.variantId ?? ''}"><span class="thumbnail" data-thumb="${icon.iconId}"></span><strong>${esc(icon.name)}</strong><small>${variants.map(v => v.size).join(' / ')} px</small></button>`).join('')}</div>${!data.items.length ? empty('没有匹配的图标', '尝试调整搜索条件。') : ''}<div class="pagination">${button('上一页', 'previous', options.offset ? '' : 'disabled')}<small>${Math.floor(options.offset / 48) + 1} / ${Math.max(1, Math.ceil(data.total / 48))}</small>${button('下一页', 'next', options.offset + 48 >= data.total ? 'disabled' : '')}</div>`;
       await Promise.all(data.items.map(async ({ icon, variants }) => { const slot = main.querySelector(`[data-thumb="${icon.iconId}"]`); if (!variants[0]) return; try { const preview = await run('preview_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: icon.iconId, variantId: variants[0].variantId }); if (slot?.isConnected) slot.innerHTML = preview.svg; } catch { if (slot) slot.textContent = t('尚未绘制'); } }));
@@ -95,7 +102,7 @@ async function render(force = false) {
         main.innerHTML += sceneBoard(data.scenes.samples);
       } else {
         const variant = data.matrix.variants.find(v => v.variantId === a.variantId); if (!variant) throw Error('当前变体不存在，请返回列表。');
-        main.innerHTML += `<div class="versions"><span>${esc(t('尺寸 / 样式'))}</span>${data.matrix.variants.filter(v => v.status === 'active').map(v => button(`${v.size} × ${v.size} px · ${t(v.style === 'filled' ? '填充' : '描边')} · ${({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]&&language==='zh'?({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]:v.weight}`, 'structure', `data-variant="${v.variantId}" aria-pressed="${v.variantId === a.variantId}"`)).join('')}</div><div class="frame"><div class="toolbar"><label><input id="grid" type="checkbox" ${options.grid ? 'checked' : ''}>${esc(t('网格'))}</label><label><input id="nodes" type="checkbox" ${options.nodes ? 'checked' : ''}>${esc(t('节点'))}</label><label>${esc(t('缩放'))}<select id="zoom">${[0.5, 1, 2, 4].map(z => `<option value="${z}" ${options.zoom === z ? 'selected' : ''}>${z * 100}%</option>`).join('')}</select></label></div><div class="canvas"></div><div class="actual"><small>${esc(t('实际尺寸'))}</small></div></div>`;
+        main.innerHTML += `<div class="versions">${data.matrix.variants.filter(v => v.status === 'active').map(v => button(`${v.size} × ${v.size} px · ${t(v.style === 'filled' ? '填充' : '描边')} · ${({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]&&language==='zh'?({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]:v.weight}`, 'structure', `data-variant="${v.variantId}" aria-pressed="${v.variantId === a.variantId}"`)).join('')}</div><div class="frame"><div class="toolbar"><label><input id="grid" type="checkbox" ${options.grid ? 'checked' : ''}>${esc(t('网格'))}</label><label><input id="nodes" type="checkbox" ${options.nodes ? 'checked' : ''}>${esc(t('节点'))}</label><label>${esc(t('缩放'))}<select id="zoom">${[0.5, 1, 2, 4].map(z => `<option value="${z}" ${options.zoom === z ? 'selected' : ''}>${z * 100}%</option>`).join('')}</select></label></div><div class="canvas"></div><div class="actual"><small>${esc(t('实际尺寸'))}</small></div></div>`;
         $('.actual').style.setProperty('--sample-size', `${Math.max(64, ...data.matrix.variants.filter(v => v.status === 'active').map(v => v.size + 32))}px`);
         const preview = data.preview; if (!preview) $('.canvas').innerHTML = empty('尚未绘制');
         if (preview) { $('.canvas').innerHTML = preview.svg; const svg = $('.canvas svg'); svg.style.width = `${Math.min(520, window.innerWidth - 96) * options.zoom}px`; svg.style.maxWidth = 'none';
@@ -154,7 +161,9 @@ function drawNodes(svg, layers, selection, size) {
 document.addEventListener('click', async event => {
   const element = event.target.closest('[data-action]'); if (!element || element.disabled) return; error('');
   try { const action = element.dataset.action;
-    if (action === 'library') await navigate('library');
+    if (action === 'refresh') await render(true);
+    else if (action === 'disconnect') { await run('disconnect_storage',{requestId:rid()}); await render(true); }
+    else if (action === 'library') await navigate('library');
     else if (action === 'project') await navigate('project', { projectId: context.projectId });
     else if (action === 'open-project') await navigate('project', { projectId: element.dataset.id });
     else if (action === 'scheme') { await run('set_view_options',{requestId:rid(),options:{offset:0,tag:null}}); await navigate('icons',{projectId:context.projectId,schemeId:element.dataset.id}); }
@@ -174,8 +183,6 @@ let searchTimer;
 document.addEventListener('input',event=>{if(event.target.id==='search'){clearTimeout(searchTimer);const search=event.target.value;searchTimer=setTimeout(async()=>{await run('set_view_options',{requestId:rid(),options:{search,offset:0}});await render(true);},180);}});
 document.addEventListener('change',async event=>{const id=event.target.id;if(['grid','nodes','zoom','tags'].includes(id)){options[id==='tags'?'tag':id]=id==='zoom'?Number(event.target.value):id==='tags'?event.target.value||null:event.target.checked;options.offset=0;await run('set_view_options',{requestId:rid(),options});await render(true);}});
 $('#language').onclick=()=>{language=language==='zh'?'en':'zh';localStorage.setItem('icon-studio-language',language);document.documentElement.lang=language==='zh'?'zh-CN':'en';render(true);};
-$('#refresh').onclick=()=>render(true);
-$('#disconnect').onclick=async()=>{await run('disconnect_storage',{requestId:rid()});await render(true);};
 async function restoreRoute(){try{if(location.hash){const route=JSON.parse(decodeURIComponent(location.hash.slice(1)));await navigate(route.view,Object.fromEntries(Object.entries(route).filter(([k])=>k!=='view')),false);}}catch(e){error(e.message);}}
 window.addEventListener('popstate',restoreRoute);
 let resizeTimer;
@@ -183,7 +190,7 @@ window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setT
 async function start(){
   try{const boot=await fetch('/bootstrap'+location.search,{method:'POST'});if(!boot.ok)throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));({token}=await boot.json());capabilities=await run('get_capabilities');
     const mcp=await registerWebMCP(document.modelContext,capabilities,async(name,args,signal)=>{const result=await raw(name,args,signal);if(result.ok&&capabilities.operations.find(o=>o.name===name)?.readOnly===false)await render(true);return result;});
-    $('#runtime-info').textContent=mcp.available?'WebMCP · '+capabilities.skill.version:'本地运行 · '+(capabilities.skill.version??'未知版本');
+    runtimeInfo=mcp.available?'WebMCP · '+capabilities.skill.version:'本地运行 · '+(capabilities.skill.version??'未知版本');
     await restoreRoute();await render(true);
     setInterval(()=>{if(!document.hidden)render();},1500);
     const updates=await run('get_skill_update_status');if(updates.status==='update_available'){$('#update').hidden=false;$('#update').textContent=`Skill ${updates.latestVersion} 可更新。`;}

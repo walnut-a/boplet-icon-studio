@@ -45,7 +45,7 @@ const project = { projectId: identity.projectId };
 const pageOf = item => object({ items: array(item), total: { type: 'integer', minimum: 0 }, offset: page.offset, limit: page.limit });
 const projectData = object({ project: doc('project') });
 const skillSchema = object({ status: enumeration('not_loaded', 'loaded'), version: nullable(shortText), evidence: nullable(text) });
-const storageSchema = object({ connected: bool, kind: nullable(enumeration('memory', 'node', 'browser')), libraryId: nullable(identity.libraryId) });
+const storageSchema = object({ connected: bool, kind: nullable(enumeration('memory', 'node', 'browser')), libraryId: nullable(identity.libraryId), location: nullable({ type: 'string' }) });
 
 function define(name, { description, input = empty, data, handler, mutates = false, requiresStorage = true, requiresSkill = true, persists = false }) {
   catalog[name] = { ...catalog[name], description, inputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:input:${name}`, ...input },
