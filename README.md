@@ -11,22 +11,22 @@
 - [已确认需求](docs/产品图标工坊-项目化架构与双端产品方案.md)
 - [开发计划与进度](docs/产品图标工坊-开发计划.md)
 
-此处 `docs/` 是后续唯一维护版本。父目录 `outputs/` 中的同名文档保留为本次建仓前的历史快照，不再双向维护。
+此处 `docs/` 是后续唯一维护版本。原临时工作区 `outputs/` 中的同名文档保留为本次建仓前的历史快照，不再双向维护。
 
 先完成完整 Skill，再完成网页版；两端共用数据格式、操作合同和几何核心。下一步从 A0 的工程、数据与操作合同开始。
 
 ## 接续开发
 
-在 Codex 中将本仓库文件夹添加为项目，再从该项目发起后续开发任务。不要继续以父级临时工作区为代码修改根目录。
+在 Codex 中将 `<USER_HOME>/GitHub/icon-studio` 添加为项目，再从该项目发起后续开发任务。不要继续以原临时工作区为代码修改根目录。
 
 先读取本文件、AGENTS.md 和两份基准文档，再检查 Git 状态。按工作包保留可审查提交和验证证据；提交、安装、替换与部署分别处理。
 
 ## 旧版参考
 
-需求文档中的旧版 `outputs/` 与 `work/` 路径均相对于本仓库的父目录：
+需求文档中的旧版 `outputs/` 与 `work/` 路径均相对于原临时工作区 `<USER_HOME>/Documents/Codex/2026-08-16/https-www-minoradventures-co-blog-the`，不是本仓库或 GitHub 目录：
 
-- `../outputs/make-product-icons/`：旧候选源码，只读参考。
-- `../work/`：旧测试，按新合同提取有用的回归语义。
+- `<USER_HOME>/Documents/Codex/2026-08-16/https-www-minoradventures-co-blog-the/outputs/make-product-icons/`：旧候选源码，只读参考。
+- `<USER_HOME>/Documents/Codex/2026-08-16/https-www-minoradventures-co-blog-the/work/`：旧测试，按新合同提取有用的回归语义。
 
 这些路径是本机历史参考，不是新版运行依赖，也未打包进本仓库。原有 Skill、HETAO 数据和预览服务保持原样；不迁移旧数据，不将真实项目或日志提交到 Git。
 
