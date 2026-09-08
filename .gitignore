@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+dist/
+outputs/
+coverage/
+test-results/
+playwright-report/
+.qa/
+*.log
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
