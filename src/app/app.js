@@ -16,7 +16,7 @@ Object.assign(translations, {
 const t = value => language === 'en' ? translations[value] ?? value : value;
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rid = () => crypto.randomUUID();
-const error = message => { $('#error').textContent = message; $('#error').hidden = !message; };
+const error = message => { $('#error').textContent = message; $('#error').hidden = !message; if (message) $('#startup').hidden = true; };
 const button = (label, action, attrs = '') => `<button data-action="${action}" ${attrs}>${esc(t(label))}</button>`;
 const empty = (title, description = '') => `<div class="empty"><h2>${esc(t(title))}</h2><p>${esc(t(description))}</p></div>`;
 const storageDetails = storage => `<section class="project-storage"><h2>${esc(t('存储位置'))}</h2><p id="storage-location">${esc(storage.location ?? t(storage.connected ? '未提供' : '未连接'))}</p><small>${esc(runtimeInfo)}</small><div class="storage-actions">${button('刷新', 'refresh', 'id="refresh"')}${button('断开目录', 'disconnect', `id="disconnect" ${storage.connected ? '' : 'disabled'}`)}</div></section>`;
@@ -71,17 +71,28 @@ async function render(force = false) {
     if (!force && snapshot === lastSnapshot) return;
     lastSnapshot = snapshot;
     const focused = document.activeElement?.id; const selectionStart = document.activeElement?.selectionStart;
-    $('#project-label').textContent = project?.name ?? '产品图标工坊'; $('#language').textContent = language === 'zh' ? 'EN' : '中文';
+    const workspace = $('.workspace-body'), sidebar = $('.sidebar');
+    const header = $('.workspace-header'), footer = $('.skill-footer');
+    const libraryLayout = !project;
+    workspace.classList.toggle('is-library', libraryLayout);
+    sidebar.hidden = libraryLayout;
+    if (libraryLayout && header.parentElement !== workspace) {
+      workspace.prepend(header); workspace.append(footer);
+    } else if (!libraryLayout && header.parentElement !== sidebar) {
+      sidebar.prepend(header); sidebar.append(footer);
+    }
+    $('#project-label').textContent = project?.name ?? ''; $('#project-label').hidden = !project; $('#language').textContent = language === 'zh' ? 'EN' : '中文';
+    $('#skill-name').textContent = language === 'zh' ? '产品图标工坊' : 'Icon Studio';
     const onboarding = next.view === 'project' && Boolean(project) && schemes.length === 0;
     $('#library-back').hidden = !project; $('#library-back').setAttribute('aria-label', t('返回项目库')); $('#library-back').title = t('返回项目库');
     $('#brief-link').hidden = !project; $('#brief-link').textContent = t('项目信息');
     $('#project-info').hidden = !project;
     $('#brief-link').setAttribute('aria-current', next.view === 'project' ? 'page' : 'false');
-    navigation.hidden = onboarding;
+    navigation.hidden = !project || onboarding;
     $('.workspace-body').classList.toggle('is-onboarding', onboarding);
-    navigation.innerHTML = onboarding ? '' : project ? `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav>` : `<h2>${esc(t('项目'))}</h2><nav>${button('项目库', 'library', 'aria-current="page"')}</nav>`;
+    navigation.innerHTML = navigation.hidden ? '' : `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav>`;
     inspector.hidden = true; inspector.innerHTML = '';
-    if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); return; }
+    if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); wrapPage('library'); return; }
     if (next.view === 'library') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('项目库'))}</h1></div>` + (!data.items.length ? empty('暂无项目', '在对话中描述设计需求，即可开始一个新项目。') : `<div class="project-list">${data.items.map(p => `<button class="project-row" data-action="open-project" data-id="${p.projectId}"><span><strong>${esc(p.name)}</strong><small>${esc(p.purpose ?? '')}</small></span><small>${esc(p.updatedAt.slice(0, 10))}</small></button>`).join('')}</div>`);
       main.innerHTML += storageDetails(storage);
@@ -115,8 +126,18 @@ async function render(force = false) {
         inspector.innerHTML = `<section><h2>${esc(t('图标详情'))}</h2><small>${variant.size} × ${variant.size} px · ${esc(t(variant.style === 'filled' ? '填充' : '描边'))}</small>${button('下载 SVG', 'download', 'class="primary"')}</section><section><h2>${esc(t('图层'))}</h2><div class="layers">${layerButtons(variant.layers, a.layerId)}</div></section><section><h2>${esc(t('属性'))}</h2>${properties(variant.layers, a)}</section>`;
       }
     }
+    wrapPage(next.view);
     if (focused && document.getElementById(focused)) { const el = document.getElementById(focused); el.focus(); if (typeof selectionStart === 'number' && el.setSelectionRange) el.setSelectionRange(selectionStart, selectionStart); }
   } catch (e) { error(e.message); } finally { rendering = false; }
+}
+function wrapPage(view) {
+  const body = document.createElement('div');
+  body.className = 'page-body';
+  body.dataset.layout = view === 'project' ? 'reading' : ['structure', 'scenes'].includes(view) ? 'detail' : 'collection';
+  body.append(...main.childNodes);
+  main.append(body);
+  $('.workspace-body').hidden = false;
+  $('#startup').hidden = true;
 }
 function sceneBoard(samples) {
   if (!samples.length) return empty('暂无应用场景', '尚未登记这个图标的应用用途。');
