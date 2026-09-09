@@ -47,9 +47,11 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await expect(page.locator('#language')).toBeVisible();
   await expect(page.locator('.skill-footer')).toBeVisible();
   assert.equal((await page.locator('.content').boundingBox()).x, 0, '项目库内容区不为侧栏预留一列');
-  const libraryBody = await page.locator('.page-body').boundingBox();
+  await expect(page.locator('.skill-footer #language')).toBeVisible();
+  await expect(page.locator('.workspace-header')).toBeHidden();
   const languageBox = await page.locator('#language').boundingBox();
-  assert.ok(Math.abs(languageBox.x + languageBox.width - libraryBody.x - libraryBody.width) < 2, '语言切换与内容容器右边缘对齐');
+  const brandBox = await page.locator('.skill-identity').boundingBox();
+  assert.ok(Math.abs(languageBox.y + languageBox.height / 2 - brandBox.y - brandBox.height / 2) < 2, '语言切换紧邻品牌并垂直对齐');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:'.impeccable/review/library-layout-mobile.png',fullPage:true});
@@ -127,7 +129,7 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await expect(page.locator('.brief-onboarding')).toHaveCount(0);
   for (const name of ['C · 三','B · 二','A · 一']) await invoke('create_scheme', { ...p, name, requestId: requestId() });
   await expect(page.locator('#navigation button').filter({hasText:/^[ABC] · /})).toHaveText(['A · 一','B · 二','C · 三']);
-  assert.equal(await page.locator('.sidebar .workspace-header #language').count(), 1);
+  assert.equal(await page.locator('.sidebar .skill-footer #language').count(), 1);
   assert.equal((await page.locator('.content').boundingBox()).y, 0, '主内容从页面顶部开始');
   await expect(page.locator('.workspace-header').getByRole('button', { name: '返回项目库', exact: true })).toBeVisible();
   await expect(page.locator('#project-info').getByRole('button', { name: '项目信息', exact: true })).toBeVisible();
@@ -232,6 +234,7 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await invoke('start_batch',{...p,batchId:followup.batchId,requestId:requestId()});
   await invoke('pause_task',{...p,taskId:followup.taskIds[0],requestId:requestId()});
   await server.close();server=await startServer(serverOptions);await page.goto(server.url);
+  await page.getByRole('button',{name:'连接已有目录',exact:true}).waitFor();
   if(native)await page.waitForFunction(async()=>document.modelContext&&(await document.modelContext.getTools()).length===95);
   await invoke('connect_library',{create:false,requestId:requestId()});
   assert.ok((await invoke('list_projects',{})).items.some(item=>item.projectId===p.projectId));

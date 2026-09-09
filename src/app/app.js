@@ -74,6 +74,7 @@ async function render(force = false) {
     const workspace = $('.workspace-body'), sidebar = $('.sidebar');
     const header = $('.workspace-header'), footer = $('.skill-footer');
     const libraryLayout = !project;
+    header.hidden = libraryLayout;
     workspace.classList.toggle('is-library', libraryLayout);
     sidebar.hidden = libraryLayout;
     if (libraryLayout && header.parentElement !== workspace) {
