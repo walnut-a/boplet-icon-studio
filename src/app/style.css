@@ -60,6 +60,8 @@ select:disabled{opacity:.45}
 .skill-footer{flex-shrink:0;padding:var(--space-4);border-top:1px solid var(--line);display:grid;gap:var(--space-3)}
 .skill-identity{display:flex;align-items:center;gap:var(--space-2)}
 .skill-identity strong{font-size:13px;font-weight:600}
+.skill-wordmark{display:flex;flex-direction:column;gap:0}
+.skill-wordmark small{font-size:11px;line-height:16px;white-space:nowrap}
 .skill-credit{font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .skill-credit a{display:block;color:var(--muted);text-decoration:underline;text-underline-offset:3px;margin-top:var(--space-1)}
 .skill-credit a:hover{color:var(--ink)}

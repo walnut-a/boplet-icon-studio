@@ -114,7 +114,7 @@ async function render(force = false) {
       sidebar.prepend(header); sidebar.append(footer);
     }
     $('#project-label').textContent = project?.name ?? ''; $('#project-label').hidden = !project; $('#language').textContent = language === 'zh' ? 'EN' : '中文';
-    $('#skill-name').textContent = language === 'zh' ? '产品图标工坊' : 'Icon Studio';
+    $('#skill-name').textContent = 'Boplet';
     const onboarding = next.view === 'project' && Boolean(project) && schemes.length === 0;
     $('#library-back').hidden = !project; $('#library-back').setAttribute('aria-label', t('返回项目库')); $('#library-back').title = t('返回项目库');
     $('#brief-link').hidden = !project; $('#brief-link').textContent = t('项目信息');

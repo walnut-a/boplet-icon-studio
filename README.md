@@ -1,4 +1,4 @@
-# 产品图标工坊 · Icon Studio
+# Boplet — Icon Studio
 
 由 Agent 操作、用户审核的图标系统设计 Skill。WebMCP 优先但不是门槛，项目数据保存在用户本地，与程序分离。
 
