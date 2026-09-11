@@ -66,7 +66,6 @@ select:disabled{opacity:.45}
 .workspace-body.is-library{display:flex;flex-direction:column}
 .is-library>.workspace-header{background:transparent;padding:var(--space-4) var(--space-8) 0;min-height:0}
 .is-library>.content{flex:1}
-.is-library main{padding-top:var(--space-6)}
 .is-library>.skill-footer{border:0;padding:var(--space-6) var(--space-8);display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-4)}
 .is-library .skill-credit a{display:inline;margin:0 0 0 var(--space-2)}
 @media(max-width:700px){.is-library>.workspace-header{padding-inline:var(--space-4)}.is-library>.skill-footer{padding-inline:var(--space-4);align-items:flex-start;flex-direction:column;gap:var(--space-2)}.is-library .skill-credit a{display:block;margin:var(--space-1) 0 0}}
@@ -101,6 +100,16 @@ select:disabled{opacity:.45}
 .page-body{width:100%;max-width:var(--width-collection);margin-inline:auto;min-width:0}
 .page-body[data-layout=reading]{max-width:var(--width-reading)}
 .page-body[data-layout=detail]{max-width:var(--width-detail)}
+/* Optical outer edge: about 16px of visible whitespace, independent of hit areas.
+   Heading rows contain ~8px of font/line-box space; links and arrows ~12px. */
+:root{--edge-visible:16px;--section-gap:24px;--field-gap:8px}
+#main{padding-top:calc(var(--edge-visible) - var(--space-2))}
+#main:has(>.page-body[data-layout=detail]){padding-top:calc(var(--edge-visible) - var(--space-3))}
+.sidebar .workspace-header{padding-top:calc(var(--edge-visible) - var(--space-3));gap:var(--space-4)}
+.sidebar .skill-footer{padding-bottom:var(--edge-visible)}
+.brief{gap:var(--section-gap)}
+.brief h2{margin-bottom:var(--field-gap)}
+@media(pointer:coarse){.sidebar .workspace-header{padding-top:0}}
 .project-list{max-width:none;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),340px));gap:var(--space-4)}
 .project-row{flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:140px;padding:var(--space-6);overflow-wrap:anywhere}
 .project-row span{gap:var(--space-2)}
