@@ -1,9 +1,9 @@
 ---
 name: make-product-icons
-description: Design, extend, inspect, and deliver coherent product UI icon systems using confirmed briefs, shared design rules, explicit geometry, and a local HTML review container. Use for creating or maintaining an icon library, not raster illustration or general logo image generation.
+description: Boplet — Icon Studio. Design, extend, inspect, and deliver coherent product UI icon systems using confirmed briefs, shared design rules, explicit geometry, and a local HTML review container. Use for creating or maintaining an icon library, not raster illustration or general logo image generation.
 ---
 
-# 产品图标工坊
+# Boplet — Icon Studio
 
 先完整读取本文件，再开始操作。以对话澄清需求、登记计划、修改图标；HTML 用于看项目、方案、结构、应用场景和真实执行状态。用户可以导航、选择节点和下载，不在容器手填需求或拖动几何。不要在界面加入内部设计推理、评分、风险评价或常驻“已保存”。
 
