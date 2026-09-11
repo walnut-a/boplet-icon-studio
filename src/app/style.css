@@ -105,6 +105,8 @@ select:disabled{opacity:.45}
 :root{--edge-visible:16px;--section-gap:24px;--field-gap:8px}
 #main{padding-top:calc(var(--edge-visible) - var(--space-2))}
 #main:has(>.page-body[data-layout=detail]){padding-top:calc(var(--edge-visible) - var(--space-3))}
+/* Inspector captions have ~4px of font/line-box space above their visible ink. */
+#inspector{padding-top:calc(var(--edge-visible) - var(--space-1))}
 .sidebar .workspace-header{padding-top:calc(var(--edge-visible) - var(--space-3));gap:var(--space-4)}
 .sidebar .skill-footer{padding-bottom:var(--edge-visible)}
 .brief{gap:var(--section-gap)}

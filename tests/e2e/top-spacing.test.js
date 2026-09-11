@@ -15,6 +15,13 @@ test('全局外缘使用一致的光学间距，标题与返回链接分别补�
         const padding = await page.locator('#main').evaluate(el => getComputedStyle(el).paddingTop);
         assert.equal(padding, layout === 'detail' ? '4px' : '8px', `${view} / ${width}px`);
       }
+      await page.setContent(`<style>${css}</style><aside id="inspector"><section><h2>图标详情</h2><small>16 × 16 px</small><button>下载 SVG</button></section></aside>`);
+      const inset = await page.locator('#inspector').evaluate(el => {
+        const title = el.querySelector('h2');
+        return title.getBoundingClientRect().top - el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).borderTopWidth);
+      });
+      assert.equal(inset, 12, `检查栏标题行框补偿 / ${width}px`);
+      assert.ok((await page.locator('#inspector button').boundingBox()).height >= 36);
     }
   } finally {
     await browser.close();
