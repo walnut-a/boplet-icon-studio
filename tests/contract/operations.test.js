@@ -6,7 +6,7 @@ import { MemoryStorage } from '../../src/storage/memory.js';
 import { operationCatalog } from '../../src/contracts/operations.js';
 import { validateResult } from '../../src/contracts/results.js';
 
-test('22 个能力域的 95 个操作均有严格可执行合同', async () => {
+test('22 个能力域的 96 个操作均有严格可执行合同', async () => {
   const prd = await readFile(new URL('../../docs/产品图标工坊-项目化架构与双端产品方案.md', import.meta.url), 'utf8');
   const table = prd.split('### 11.2 工具覆盖目录')[1].split('### 11.3')[0];
   const required = [...table.matchAll(/`([a-z]+_[a-z_]+)`/g)].map(x => x[1]);
@@ -27,7 +27,7 @@ test('22 个能力域的 95 个操作均有严格可执行合同', async () => {
       assert.ok(capability.phase);
     }
   }
-  assert.equal(capabilities.data.operations.length,95);
+  assert.equal(capabilities.data.operations.length,96);
   for (const capability of capabilities.data.operations) {
     const invalid = await studio.execute(capability.name,{unexpectedField:true});
     assert.equal(invalid.error.code,'VALIDATION_FAILED',capability.name);

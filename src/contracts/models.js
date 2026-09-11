@@ -67,7 +67,9 @@ export const variantSchema = object({
 const definitions = {
   library: object({ ...header, libraryId: identity.libraryId }),
   project: object({ ...header, libraryId: identity.libraryId, projectId: identity.projectId, name: shortText,
-    purpose: nullable(text), status: lifecycle, currentBriefRevision: revision, preferredSchemeId: nullable(identity.schemeId) }),
+    purpose: nullable(text), status: lifecycle, currentBriefRevision: revision, primarySchemeId: nullable(identity.schemeId),
+    primarySchemeConfirmedAt: nullable(timestamp), primarySchemeEvidence: nullable(text), preferredSchemeId: nullable(identity.schemeId) },
+    [...Object.keys(header), 'libraryId', 'projectId', 'name', 'purpose', 'status', 'currentBriefRevision']),
   brief: object({ ...header, projectId: identity.projectId, status: versionStatus, content: briefContentSchema,
     confirmation: nullable(confirmationSchema), previousConfirmedRevision: nullable(revision) }),
   vocabulary: object({ ...header, projectId: identity.projectId, icons: array(vocabularyItemSchema) }),
@@ -115,5 +117,6 @@ export function validateDocument(kind, document) {
   if (kind === 'task' && (document.target.projectId !== document.projectId || document.progress.completed > document.progress.total)) throw new StudioError('VALIDATION_FAILED', '任务目标或进度无效。');
   if (['review', 'delivery'].includes(kind) && document.target.projectId !== document.projectId) throw new StudioError('VALIDATION_FAILED', '目标不属于文档项目。');
   if (kind === 'brief' && document.status === 'confirmed' && document.confirmation?.revision !== document.revision) throw new StudioError('VALIDATION_FAILED', '确认记录必须绑定相同内容版本。');
+  if (kind === 'project' && (Boolean(document.primarySchemeId) !== Boolean(document.primarySchemeConfirmedAt) || Boolean(document.primarySchemeId) !== Boolean(document.primarySchemeEvidence?.trim()))) throw new StudioError('VALIDATION_FAILED', '主方案需要完整确认来源与时间。');
   return document;
 }

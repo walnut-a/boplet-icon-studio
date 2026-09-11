@@ -11,7 +11,7 @@ export function createFixtureLibrary({ projects = 0, schemes = 0, icons = 0, var
   for (let p = 0; p < projects; p++) {
     const projectId = `p-${p}`;
     const root = `projects/${projectId}`;
-    put(`${root}/project.json`, 'project', { libraryId: 'lib-fixture', projectId, name: 'Synthetic project', purpose: null, status: 'active', currentBriefRevision: 'r-fixture', preferredSchemeId: null });
+    put(`${root}/project.json`, 'project', { libraryId: 'lib-fixture', projectId, name: 'Synthetic project', purpose: null, status: 'active', currentBriefRevision: 'r-fixture', primarySchemeId: null, primarySchemeConfirmedAt: null, primarySchemeEvidence: null });
     put(`${root}/design-brief.json`, 'brief', { projectId, status: 'draft', content: { fields: {}, vocabularyDraft: [] }, confirmation: null, previousConfirmedRevision: null });
     put(`${root}/vocabulary.json`, 'vocabulary', { projectId, icons: Array.from({ length: icons }, (_, i) => ({ iconId: `i-${i}`, name: `Synthetic ${i}`, concept: `test-concept-${i}`, tags: ['fixture'], usages: [], status: 'active' })) });
     for (let s = 0; s < schemes; s++) {

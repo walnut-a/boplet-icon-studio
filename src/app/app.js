@@ -7,6 +7,8 @@ let runtimeInfo = '';
 let token, context, capabilities, rendering = false, lastSnapshot = '', language = localStorage.getItem('icon-studio-language') ?? 'zh', options = { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 };
 const translations = { '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层或节点查看属性。': 'Select a layer or node to inspect it.', '设计目的': 'Purpose', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
 Object.assign(translations, {
+  '复制给 Agent': 'Copy for Agent', '已复制': 'Copied', '正在复制…': 'Copying…', '已确认': 'Confirmed',
+  '给 Agent 的指令': 'Instructions for Agent', '无法自动复制，请选中下方指令手动复制。': 'Automatic copy is unavailable. Select and copy the instructions below.',
   '项目信息': 'Project information', '存储位置': 'Storage location', '未连接': 'Not connected',
   '风格偏好': 'Style preferences',
   '步骤': 'Steps', '确认需求': 'Confirm brief', '生成方案': 'Generate schemes', '微调细节': 'Refine details',
@@ -45,6 +47,35 @@ async function exportFiles(target, exportScope) {
   const single = delivery.artifacts.length === 1; const name = single ? delivery.artifacts[0].relativePath.split('/').at(-1) : `${delivery.exportId}.zip`;
   const blob = new Blob([single ? Object.values(files)[0] : zipSync(files)], { type: single ? 'image/svg+xml' : 'application/zip' });
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function copyForAgent(element) {
+  const view = context.view;
+  const target = view === 'icons' ? scope(['projectId','schemeId']) : view === 'structure' ? variantScope() : iconScope();
+  const handoffScope = view === 'icons' ? 'scheme' : view === 'structure' ? 'variant' : 'icon';
+  const payload = run('get_agent_handoff', { ...target, scope: handoffScope, language }).then(data=>data.instruction);
+  element.disabled = true; element.textContent = t('正在复制…');
+  document.getElementById('handoff-fallback')?.remove();
+  try {
+    // Queue the clipboard request during the click, including browsers that require user activation.
+    if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+      await navigator.clipboard.write([new ClipboardItem({'text/plain':payload.then(text=>new Blob([text],{type:'text/plain'}))})]);
+    } else {
+      const text=await payload;
+      if (!navigator.clipboard?.writeText) throw Error('clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+    }
+    element.textContent=t('已复制');
+    setTimeout(()=>{if(element.isConnected)element.textContent=t('复制给 Agent');},2000);
+  } catch (failure) {
+    // Only expose a selectable read-only field when clipboard access actually fails.
+    const instruction=await payload;
+    if (!element.isConnected) return;
+    const fallback=document.createElement('section');fallback.id='handoff-fallback';
+    const label=document.createElement('label');label.textContent=t('无法自动复制，请选中下方指令手动复制。');
+    const textarea=document.createElement('textarea');textarea.readOnly=true;textarea.value=instruction;textarea.setAttribute('aria-label',t('给 Agent 的指令'));
+    label.append(textarea);fallback.append(label);element.closest('section,.page-body')?.append(fallback);
+    textarea.focus();textarea.select();element.textContent=t('复制给 Agent');
+  } finally { element.disabled=false; if(element.textContent===t('正在复制…'))element.textContent=t('复制给 Agent'); }
 }
 async function render(force = false) {
   if (rendering) return; rendering = true;
@@ -91,7 +122,7 @@ async function render(force = false) {
     $('#brief-link').setAttribute('aria-current', next.view === 'project' ? 'page' : 'false');
     navigation.hidden = !project || onboarding;
     $('.workspace-body').classList.toggle('is-onboarding', onboarding);
-    navigation.innerHTML = navigation.hidden ? '' : `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => button(s.name, 'scheme', `data-id="${s.schemeId}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"`)).join('')}</nav>`;
+    navigation.innerHTML = navigation.hidden ? '' : `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => `<button data-action="scheme" data-id="${s.schemeId}" class="scheme-link${project.primarySchemeId && project.primarySchemeId !== s.schemeId ? ' scheme-secondary' : ''}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"><span>${esc(s.name)}</span>${project.primarySchemeId === s.schemeId ? `<span class="scheme-confirmed">${esc(t('已确认'))}</span>` : ''}</button>`).join('')}</nav>`;
     inspector.hidden = true; inspector.innerHTML = '';
     if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); wrapPage('library'); return; }
     if (next.view === 'library') {
@@ -107,10 +138,14 @@ async function render(force = false) {
         ${brief}${storageDetails(storage)}</div>` : `<div class="project-details"><div class="heading"><h1>${esc(t('项目信息'))}</h1></div>${brief}${storageDetails(storage)}</div>`;
     } else if (next.view === 'icons') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('图标列表'))}</h1>${button('导出', 'export-scheme')}</div><div class="filters"><input id="search" type="search" placeholder="${esc(t('搜索图标'))}" aria-label="${esc(t('搜索图标'))}" value="${esc(options.search)}">${data.tags.length ? `<label>${esc(t('标签'))}<select id="tags"><option value="">${esc(t('全部'))}</option>${data.tags.map(tag => `<option ${tag === options.tag ? 'selected' : ''}>${esc(tag)}</option>`).join('')}</select></label>` : ''}<span class="count">${data.total} ${language === 'en' ? 'icons' : '图标'}</span></div><div class="icon-grid">${data.items.map(({ icon, variants }) => `<button class="icon-tile" data-action="icon" data-id="${icon.iconId}" data-variant="${variants[0]?.variantId ?? ''}"><span class="thumbnail" data-thumb="${icon.iconId}"></span><strong>${esc(icon.name)}</strong><small>${variants.map(v => v.size).join(' / ')} px</small></button>`).join('')}</div>${!data.items.length ? empty('没有匹配的图标', '尝试调整搜索条件。') : ''}<div class="pagination">${button('上一页', 'previous', options.offset ? '' : 'disabled')}<small>${Math.floor(options.offset / 48) + 1} / ${Math.max(1, Math.ceil(data.total / 48))}</small>${button('下一页', 'next', options.offset + 48 >= data.total ? 'disabled' : '')}</div>`;
+      const actions=document.createElement('div');actions.className='heading-actions';
+      actions.innerHTML=button('复制给 Agent','copy-agent','id="copy-agent" aria-live="polite"');
+      actions.append(main.querySelector('[data-action="export-scheme"]'));main.querySelector('.heading').append(actions);
       await Promise.all(data.items.map(async ({ icon, variants }) => { const slot = main.querySelector(`[data-thumb="${icon.iconId}"]`); if (!variants[0]) return; try { const preview = await run('preview_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: icon.iconId, variantId: variants[0].variantId }); if (slot?.isConnected) slot.innerHTML = preview.svg; } catch { if (slot) slot.textContent = t('尚未绘制'); } }));
     } else {
       main.innerHTML = `${button('返回图标列表', 'icons', 'class="quiet back"')}<header class="detail-heading"><div class="title"><h1>${esc(data.icon.name)}</h1><small>${esc(data.icon.concept)}</small></div><div class="preview-switch">${button('图标结构', 'structure', `aria-pressed="${next.view === 'structure'}" data-variant="${a.variantId ?? data.matrix.variants[0]?.variantId}"`)}${button('应用场景', 'scenes', `aria-pressed="${next.view === 'scenes'}"`)}</div></header>`;
       if (next.view === 'scenes') {
+        main.innerHTML += `<div class="heading-actions scene-actions">${button('复制给 Agent','copy-agent','id="copy-agent" aria-live="polite"')}</div>`;
         main.innerHTML += sceneBoard(data.scenes.samples);
       } else {
         const variant = data.matrix.variants.find(v => v.variantId === a.variantId); if (!variant) throw Error('当前变体不存在，请返回列表。');
@@ -127,6 +162,7 @@ async function render(force = false) {
         inspector.innerHTML = `<section><h2>${esc(t('图标详情'))}</h2><small>${variant.size} × ${variant.size} px · ${esc(t(variant.style === 'filled' ? '填充' : '描边'))}</small>${button('下载 SVG', 'download', 'class="primary"')}</section><section><h2>${esc(t('图层'))}</h2><div class="layers">${layerButtons(variant.layers, a.layerId)}</div></section><section><h2>${esc(t('属性'))}</h2>${properties(variant.layers, a)}</section>`;
       }
     }
+    if(next.view==='structure')inspector.querySelector('section')?.insertAdjacentHTML('beforeend',button('复制给 Agent','copy-agent','id="copy-agent" aria-live="polite"'));
     wrapPage(next.view);
     if (focused && document.getElementById(focused)) { const el = document.getElementById(focused); el.focus(); if (typeof selectionStart === 'number' && el.setSelectionRange) el.setSelectionRange(selectionStart, selectionStart); }
   } catch (e) { error(e.message); } finally { rendering = false; }
@@ -197,6 +233,7 @@ document.addEventListener('click', async event => {
     else if (action === 'previous' || action === 'next') {await run('set_view_options',{requestId:rid(),options:{offset:options.offset+(action==='next'?48:-48)}});await render(true);}
     else if (action === 'download') await exportFiles(variantScope(),'variant');
     else if (action === 'export-scheme') await exportFiles(scope(['projectId','schemeId']),'scheme');
+    else if (action === 'copy-agent') await copyForAgent(element);
     else if (action === 'connect') {await run('connect_library',{requestId:rid(),create:false});await render(true);}
   } catch(e) {error(e.message);}
 });

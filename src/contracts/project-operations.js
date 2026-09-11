@@ -72,8 +72,12 @@ export function registerProjectOperations(define) {
       const scheme = { ...touch(r, await readScheme(r, a)), ...(a.changes ?? { status: name === 'archive_scheme' ? 'archived' : 'draft' }) };
       await r.writeDocument('scheme', `${schemePath(a)}/scheme.json`, scheme); return { scheme };
     } });
-  define('set_preferred_scheme', { description: '显式采用方案；仅查看不会改变偏好。', input: input(s), data: object({ project: doc('project') }), mutates: true, persists: true, handler: async (r, a) => {
-    await readScheme(r, a); const project = touch(r, await readProject(r, a.projectId)); project.preferredSchemeId = a.schemeId;
+  define('set_primary_scheme', { description: '用户明确选择或取消主方案；倾向、查看和编辑不构成确认。确认设计方向，不冻结图标、不删除其他方案。', input: input({ ...p, schemeId: nullable(identity.schemeId), evidenceReference: text }), data: object({ project: doc('project') }), mutates: true, persists: true, handler: async (r, a) => {
+    if (!a.evidenceReference.trim()) throw new StudioError('VALIDATION_FAILED', '需要用户明确确认的原文引用。');
+    if (a.schemeId && (await readScheme(r, a)).status === 'archived') throw new StudioError('VALIDATION_FAILED', '不能采用已归档方案。');
+    const project = touch(r, await readProject(r, a.projectId)); project.primarySchemeId = a.schemeId;
+    project.primarySchemeConfirmedAt = a.schemeId ? r.time() : null;
+    project.primarySchemeEvidence = a.schemeId ? a.evidenceReference : null;
     await r.writeDocument('project', `${projectPath(a)}/project.json`, project); return { project };
   } });
   define('get_design_rules', { description: '读取 Agent 制定的方案规则及生产版本，不代表用户审核。', input: object(s), data: object({ rules: doc('rules') }), handler: async (r, a) => ({ rules: await readRules(r, a) }) });

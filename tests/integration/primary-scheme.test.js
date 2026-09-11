@@ -1,0 +1,92 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { produce, call, req, rectangle } from '../fixtures/workflow.js';
+import {createStudio} from '../../src/core/studio.js';
+import {skill} from '../fixtures/workflow.js';
+
+test('主方案由明确确认设置，读取附带名称，编辑不失效，切换不删除方案', async () => {
+  const {studio,p,s,target,batch}=await produce();
+  assert.equal((await call(studio,'get_project',p)).project.primarySchemeId,null);
+  const denied=await studio.execute('set_primary_scheme',{...s,requestId:req()});
+  assert.equal(denied.ok,false);
+  await call(studio,'set_primary_scheme',{...s,evidenceReference:'合成用户：以此方案为主线',requestId:req()});
+  await call(studio,'update_scheme',{...s,changes:{name:'主线新名称'},requestId:req()});
+  await call(studio,'apply_operations',{...target,taskId:batch.taskIds[0],operations:[{op:'replace_layer',layerId:rectangle.layerId,layer:{...rectangle,radius:1}}],requestId:req()});
+  const {project,primaryScheme}=await call(studio,'get_project',p);
+  assert.equal(project.primarySchemeId,s.schemeId);
+  assert.equal(primaryScheme.name,'主线新名称');
+  assert.ok(primaryScheme.confirmedAt);
+  assert.equal((await call(studio,'open_project',{...p,requestId:req()})).primaryScheme.schemeId,s.schemeId);
+  assert.equal((await call(studio,'get_view_context')).primaryScheme.schemeId,s.schemeId);
+  const {scheme}=await call(studio,'create_scheme',{...p,name:'另一个方向',requestId:req()});
+  await call(studio,'set_primary_scheme',{...p,schemeId:scheme.schemeId,evidenceReference:'合成用户切换',requestId:req()});
+  assert.equal((await call(studio,'get_view_context')).primaryScheme.schemeId,scheme.schemeId);
+  assert.equal((await call(studio,'list_schemes',p)).total,2);
+  assert.equal((await call(studio,'get_icon',{...s,iconId:target.iconId})).matrix.variants[0].layers.length,1);
+});
+
+test('主方案不能跨项目或采用已归档方案；取消只清除指向',async()=>{
+ const {studio,p,s}=await produce();
+ const {project}=await call(studio,'create_project',{name:'其他项目',requestId:req()});
+ assert.equal((await studio.execute('set_primary_scheme',{projectId:project.projectId,schemeId:s.schemeId,evidenceReference:'合成',requestId:req()})).ok,false);
+ await call(studio,'archive_scheme',{...s,requestId:req()});
+ assert.equal((await studio.execute('set_primary_scheme',{...s,evidenceReference:'合成',requestId:req()})).ok,false);
+ await call(studio,'restore_scheme',{...s,requestId:req()});
+ await call(studio,'set_primary_scheme',{...s,evidenceReference:'合成',requestId:req()});
+ await call(studio,'set_primary_scheme',{...p,schemeId:null,evidenceReference:'合成用户取消',requestId:req()});
+ assert.equal((await call(studio,'get_project',p)).primaryScheme,null);
+ assert.equal((await call(studio,'list_schemes',p)).total,1);
+});
+
+test('交接指令只读、范围准确、无令牌端口，非主方案也可交接',async()=>{
+ const {studio,p,s,i,target}=await produce();
+ const before=await call(studio,'get_project',p);
+ const scheme=await call(studio,'get_agent_handoff',{...s,scope:'scheme',language:'zh'});
+ assert.match(scheme.instruction,/未指定主方案/);
+ assert.match(scheme.instruction,/get_icon/);
+ assert.match(scheme.instruction,/HTML/);
+ assert.equal(scheme.target.iconId,undefined);
+ assert.equal(scheme.items.length,1);
+ assert.equal(scheme.items[0].variantId,target.variantId);
+ assert.ok(scheme.items[0].matrixPath.endsWith(`${target.iconId}.json`));
+ assert.doesNotMatch(scheme.instruction,/Bearer|127\.0\.0\.1|token|待审核|需修改/);
+ assert.deepEqual(await call(studio,'get_project',p),before);
+ await call(studio,'set_primary_scheme',{...s,evidenceReference:'合成用户确认',requestId:req()});
+ assert.match((await call(studio,'get_agent_handoff',{...target,scope:'variant',language:'zh'})).instruction,/已确认的主方案/);
+ assert.equal((await call(studio,'get_agent_handoff',{...i,scope:'icon',language:'en'})).scope,'icon');
+ assert.equal((await studio.execute('get_agent_handoff',{...target,scope:'scheme'})).ok,false);
+ assert.equal((await studio.execute('get_agent_handoff',{...s,iconId:'i-missing',scope:'icon'})).ok,false);
+});
+
+test('主方案重开可读，失败保存不假报确认；不将旧偏好数据迁移为主线',async()=>{
+ const {studio,storage,p,s}=await produce();
+ const path=`projects/${p.projectId}/project.json`;
+ const before=await storage.readJson(path),write=storage.writeJson.bind(storage);
+ storage.writeJson=async()=>{throw Error('simulated disk failure');};
+ assert.equal((await studio.execute('set_primary_scheme',{...s,evidenceReference:'合成确认',requestId:req()})).ok,false);
+ storage.writeJson=write;
+ assert.deepEqual(await storage.readJson(path),before);
+ await call(studio,'set_primary_scheme',{...s,evidenceReference:'合成确认',requestId:req()});
+ const receiver=createStudio({storage,skill});
+ await call(receiver,'connect_library',{create:false,requestId:req()});
+ assert.equal((await call(receiver,'open_project',{...p,requestId:req()})).primaryScheme.schemeId,s.schemeId);
+ const transfer=await call(receiver,'get_agent_handoff',{...s,scope:'scheme'});
+ const {projectId,schemeId,iconId,variantId}=transfer.items[0];
+ assert.equal((await call(receiver,'preview_icon',{projectId,schemeId,iconId,variantId})).contentHash,transfer.items[0].contentHash);
+ const legacy={...before,preferredSchemeId:s.schemeId};
+ delete legacy.primarySchemeId;delete legacy.primarySchemeConfirmedAt;delete legacy.primarySchemeEvidence;
+ await storage.writeJson(path,legacy);
+ assert.equal((await call(receiver,'get_project',p)).primaryScheme,null);
+ assert.equal((await call(receiver,'get_project',p)).project.primarySchemeId,null);
+ assert.equal((await call(receiver,'open_project',{...p,requestId:req()})).primaryScheme,null);
+ assert.equal((await call(receiver,'get_agent_handoff',{...s,scope:'scheme'})).items[0].contentHash,transfer.items[0].contentHash);
+ assert.deepEqual(await storage.readJson(path),legacy);
+ const matrixPath=`projects/${p.projectId}/schemes/${s.schemeId}/matrix/${iconId}.json`;
+ const matrixBefore=await storage.readJson(matrixPath);
+ await call(receiver,'set_primary_scheme',{...s,evidenceReference:'用户明确选择 A',requestId:req()});
+ assert.equal((await call(receiver,'get_project',p)).primaryScheme.schemeId,s.schemeId);
+ assert.deepEqual(await storage.readJson(matrixPath),matrixBefore);
+ assert.equal((await storage.readJson(path)).preferredSchemeId,s.schemeId);
+ await storage.writeJson(path,{...legacy,formatVersion:2});
+ assert.equal((await receiver.execute('get_project',p)).ok,false);
+});

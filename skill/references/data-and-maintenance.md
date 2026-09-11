@@ -8,7 +8,9 @@
 
 需求六项为 `purpose`（设计目的）、`stylePreferences`（风格偏好）、`audience`、`usage`、`scope`、`constraints`。校验与确认使用相同字段；不使用旧 `goals`，不自动映射旧内容。风格偏好不得包含 Agent 未经用户要求预设的具体造型，具体思路留给方案。历史不兼容内容仅封存。
 
-审核绑定内容 hash（几何、规则与组件），修改后旧接受不算当前接受。反馈保留用户原文，不让模型生成自评。历史恢复写新 revision，不回退文件时间，不做多用户合并。undo/redo 也需要明确历史 revision 与用户授权证据，先 list_history/get_revision 再执行，不猜“前一个”属于哪个 Agent。
+项目保存 `primarySchemeId`、`primarySchemeConfirmedAt`、`primarySchemeEvidence`，未选择时均为 null。同一 v3 项目缺少这些新增字段时，读取按未选择处理，不回写、不重建图标；允许保留 `preferredSchemeId`，但它不代表用户确认，也不映射为主方案。`set_primary_scheme` 要求真实用户确认引用，正常保存新增字段；同一项目最后一次成功选择生效。读取项目及视图时附带 `primaryScheme`（ID、当前名称、确认时间），名称实时解析而非重复存储。确认设计方向，不绑定几何 hash，不因图标修改失效。默认不删除或归档数据。未知格式仍不迁移。
+
+旧 `record_review/get_review_status` 仅保留为低层历史接口，不用于主线选择或常规用户流程，不显示逐图标审核状态。反馈保留用户原文，不让模型生成自评。历史恢复写新 revision，不回退文件时间，不做多用户合并。undo/redo 也需要明确历史 revision 与用户授权证据，先 list_history/get_revision 再执行，不猜“前一个”属于哪个 Agent。
 
 任务状态 planned/running/paused/waiting_user/blocked/failed/succeeded/cancelled 与真实检查点关联。宿主报告不能直接写成功，成功来自编译。规则生产版本或需求确认版本变化后登记新任务，不复用旧任务授权。规则 status 为 draft/ready/superseded，不含用户 confirmation 字段；prepare_confirmation 仅用于项目需求。暂停、取消只影响明确任务，不停其他项目。
 

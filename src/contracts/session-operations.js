@@ -3,12 +3,16 @@ import { identity } from './models.js';
 import { i, input, p, s, v } from './project-operations.js';
 import { locateLayer } from '../core/production.js';
 import { hash, projectPath, readMatrix, readOptional, readScheme, requireValue } from '../core/documents.js';
-import { listProjects, readProject } from '../core/projects.js';
+import { listProjects, readProject, primaryScheme } from '../core/projects.js';
 import { StudioError } from './errors.js';
 
 export const selectionSchema = object({ ...Object.fromEntries(Object.entries(v).map(([k, schema]) => [k, nullable(schema)])), layerId: nullable(id('l')), nodeId: nullable(id('n')), handle: nullable(enumeration('point', 'in', 'out')) });
 export const viewOptionsSchema = object({ grid: bool, nodes: bool, zoom: { type: 'number', minimum: 0.25, maximum: 8 }, search: { type: 'string', maxLength: 200 }, tag: nullable(shortText), offset: { type: 'integer', minimum: 0 } });
-export const viewSchema = object({ contextId: id('ctx'), view: enumeration('library', 'project', 'icons', 'structure', 'scenes'), projectId: nullable(identity.projectId), selection: selectionSchema, options: viewOptionsSchema, uiStatus: enumeration('unattached', 'attached') });
+export const primarySchemeSchema = nullable(object({ schemeId: identity.schemeId, name: shortText, confirmedAt: text }));
+export const viewSchema = object({ contextId: id('ctx'), view: enumeration('library', 'project', 'icons', 'structure', 'scenes'), projectId: nullable(identity.projectId), selection: selectionSchema, options: viewOptionsSchema, uiStatus: enumeration('unattached', 'attached'), primaryScheme: primarySchemeSchema });
+export async function viewContext(r) {
+  return { ...r.view, primaryScheme: r.library && r.view.projectId ? await primaryScheme(r, await readProject(r, r.view.projectId)) : null };
+}
 const permissionSchema = object({ permissionRequestId: id('perm'), kind: enumeration('storage', 'source'), status: enumeration('waiting_user', 'granted', 'denied', 'unavailable'), message: text });
 const eventSchema = object({ cursor: { type: 'integer' }, type: text, operationId: nullable(id('op')), name: nullable(text), target: { type: 'object' }, time: text, status: nullable(text) });
 const sourceSchema = object({ sourceId: id('source'), projectId: identity.projectId, reference: text, summary: text, contentHash: text, evidence: enumeration('host_attestation', 'authorized_read'), createdAt: text });
@@ -22,7 +26,7 @@ export function registerSessionOperations(define) {
     if (a.iconId) { const matrix = await readMatrix(r, a); if (a.variantId) requireValue(matrix.variants.find(v => v.variantId === a.variantId)); }
     r.resetView(a.projectId ?? null); r.view.view = a.view;
     for (const k of required) r.view.selection[k] = a[k];
-    return r.view;
+    return viewContext(r);
   } });
   define('set_view_options', { description: '设置网格、节点、缩放和查询，不修改图标。', input: input({ options: object(viewOptionsSchema.properties, [], { minProperties: 1 }) }), data: object({ options: viewOptionsSchema }), mutates: true, handler: async (r, a) => { Object.assign(r.viewOptions, a.options); return { options: r.viewOptions }; } });
   define('select_geometry', { description: '仅在当前结构详情选择图层/节点/控制柄，不从隐藏缓存推断。', input: input({ expectedContextId: id('ctx'), layerId: nullable(id('l')), nodeId: nullable(id('n')), handle: nullable(enumeration('point', 'in', 'out')) }, ['expectedContextId', 'layerId']), data: viewSchema, mutates: true, handler: async (r, a) => {
@@ -32,7 +36,7 @@ export function registerSessionOperations(define) {
       if (a.nodeId) { const node = requireValue(layer.nodes?.find(n => n.nodeId === a.nodeId)); if (a.handle && node[a.handle] === null) throw new StudioError('TARGET_NOT_FOUND', '控制柄不存在。'); }
       else if (a.handle) throw new StudioError('VALIDATION_FAILED', '必须指定控制柄所属节点。');
     } else if (a.nodeId || a.handle) throw new StudioError('VALIDATION_FAILED', '节点需要所属图层。');
-    Object.assign(r.view.selection, { layerId: a.layerId, nodeId: a.nodeId ?? null, handle: a.handle ?? null }); r.view.contextId = r.id('ctx'); return r.view;
+    Object.assign(r.view.selection, { layerId: a.layerId, nodeId: a.nodeId ?? null, handle: a.handle ?? null }); r.view.contextId = r.id('ctx'); return viewContext(r);
   } });
   for (const [name, kind] of [['request_storage_access', 'storage'], ['request_source_access', 'source']]) define(name, { description: '请求宿主授权目录；工具不能自行授予 OS 权限。', input: input({}), data: object({ permission: permissionSchema }), mutates: true, requiresStorage: false, handler: async r => {
     const permission = { permissionRequestId: r.id('perm'), kind, status: kind === 'storage' && r.storage ? 'granted' : kind === 'source' && r.sources ? 'granted' : 'waiting_user', message: kind === 'storage' ? '请选择或由宿主明确授权数据目录。' : '请单独授权只读资料目录。' };

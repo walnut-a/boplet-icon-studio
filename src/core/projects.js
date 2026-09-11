@@ -21,7 +21,8 @@ export async function connectLibrary(runtime, args) {
 export async function readProject(runtime, projectId) {
   const project = await runtime.readDocument('project', `${root(projectId)}/project.json`);
   if (project.projectId !== projectId || project.libraryId !== runtime.library.libraryId) throw new StudioError('VALIDATION_FAILED', '项目身份与存储位置不一致。');
-  return project;
+  // Additive v3 fields: defaults are read-only; old preference is not confirmation.
+  return { primarySchemeId: null, primarySchemeConfirmedAt: null, primarySchemeEvidence: null, ...project };
 }
 
 export async function listProjects(runtime, args) {
@@ -44,7 +45,8 @@ export async function createProject(runtime, args) {
   const brief = { ...runtime.header(), projectId, status: 'draft', content: { fields: {}, vocabularyDraft: [] }, confirmation: null, previousConfirmedRevision: null };
   const vocabulary = { ...runtime.header(), projectId, icons: [] };
   const project = { ...runtime.header(), libraryId: runtime.library.libraryId, projectId, name: args.name,
-    purpose: args.purpose ?? null, status: 'active', currentBriefRevision: brief.revision, preferredSchemeId: null };
+    purpose: args.purpose ?? null, status: 'active', currentBriefRevision: brief.revision, primarySchemeId: null,
+    primarySchemeConfirmedAt: null, primarySchemeEvidence: null };
   // Publish project.json last. No multi-file transaction or foreign-project cleanup.
   await runtime.writeDocument('brief', `${root(projectId)}/design-brief.json`, brief);
   await runtime.writeDocument('vocabulary', `${root(projectId)}/vocabulary.json`, vocabulary);
@@ -85,6 +87,13 @@ export async function listSchemes(runtime, args) {
   const offset = args.offset ?? 0;
   const limit = args.limit ?? 48;
   return { items: items.slice(offset, offset + limit), total: items.length, offset, limit };
+}
+
+export async function primaryScheme(runtime, project) {
+  if (!project.primarySchemeId) return null;
+  const scheme = await runtime.readDocument('scheme', `${root(project.projectId)}/schemes/${project.primarySchemeId}/scheme.json`);
+  if (scheme.projectId !== project.projectId || scheme.schemeId !== project.primarySchemeId) throw new StudioError('VALIDATION_FAILED', '主方案身份不符。');
+  return { schemeId: scheme.schemeId, name: scheme.name, confirmedAt: project.primarySchemeConfirmedAt };
 }
 
 export function header(id, time) {

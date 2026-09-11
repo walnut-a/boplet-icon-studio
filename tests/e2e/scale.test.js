@@ -12,13 +12,17 @@ import { skill } from '../fixtures/workflow.js';
 test('600 图标真实页面只渲染 48 张，标题对齐，缓存详情切换计时', async t=>{
   const directory=await mkdtemp(join(tmpdir(),'icon-browser-scale-'));t.after(()=>rm(directory,{recursive:true,force:true}));
   const storage=await NodeStorage.open(directory),{s}=await createScaleFixture(storage);
-  const server=await startServer({storage,skill,appDirectory:resolve('dist/app')});t.after(server.close);
+  const server=await startServer({storage,skill,appDirectory:resolve(process.env.ICON_STUDIO_TEST_APP ?? 'dist/app')});t.after(server.close);
   const invoke=async(name,input={})=>{const result=await fetch(server.url+'/operation',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${server.token}`},body:JSON.stringify({name,input})}).then(r=>r.json());assert.equal(result.ok,true,JSON.stringify(result));return result.data;};
   await invoke('connect_library',{requestId:crypto.randomUUID(),create:false});await invoke('navigate',{...s,view:'icons',requestId:crypto.randomUUID()});
   const browser=await chromium.launch({channel:'chrome',headless:true,args:['--enable-experimental-web-platform-features']});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width:1903,height:1320}});
   const start=performance.now();await page.goto(server.url);await expect(page.locator('.icon-tile svg')).toHaveCount(48);const firstPageMs=performance.now()-start;
   assert.equal(await page.locator('.icon-tile').count(),48);assert.equal(await page.locator('.icon-tile[aria-pressed]').count(),0);
-  const aligned=await page.evaluate(()=>{const a=document.querySelector('#navigation h2').getBoundingClientRect(),b=document.querySelector('.heading').getBoundingClientRect();return Math.abs(a.top-b.top)<1&&Math.abs(a.height-b.height)<1});assert.equal(aligned,true);
+  const aligned=await page.evaluate(()=>{
+    const heading=document.querySelector('.heading').getBoundingClientRect(),title=document.querySelector('.heading h1').getBoundingClientRect();
+    const actions=document.querySelector('.heading-actions').getBoundingClientRect(),filters=document.querySelector('.filters').getBoundingClientRect();
+    return Math.abs(title.left-filters.left)<1&&Math.abs(actions.right-filters.right)<1&&Math.abs(title.top+title.height/2-actions.top-actions.height/2)<1&&heading.bottom<=filters.top;
+  });assert.equal(aligned,true);
   await mkdir('.impeccable/review',{recursive:true});await page.screenshot({path:'.impeccable/review/list-600.png',fullPage:true});
   await page.locator('.icon-tile').first().click();await page.locator('.canvas svg').waitFor();
   const measurements=await page.evaluate(async()=>{

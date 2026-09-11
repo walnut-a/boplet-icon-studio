@@ -1,11 +1,12 @@
 import { array, bool, enumeration, id, nullable, object, requestId, revision, shortText, text } from './schema.js';
 import { CONTRACT_VERSION, documentSchemas, identity } from './models.js';
 import { resultSchema } from './results.js';
-import { connectLibrary, createProject, getBrief, listProjects, listSchemes, readProject, setProjectStatus, updateProject } from '../core/projects.js';
+import { connectLibrary, createProject, getBrief, listProjects, listSchemes, readProject, setProjectStatus, updateProject, primaryScheme } from '../core/projects.js';
 import { registerProjectOperations } from './project-operations.js';
 import { registerProductionOperations } from './production-operations.js';
 import { registerMaintenanceOperations } from './maintenance-operations.js';
-import { registerSessionOperations, selectionSchema, viewSchema } from './session-operations.js';
+import { registerSessionOperations, selectionSchema, viewSchema, viewContext, primarySchemeSchema } from './session-operations.js';
+import { registerHandoffOperations } from './handoff-operations.js';
 export { viewSchema } from './session-operations.js';
 
 // This is the sole capability inventory, including explicitly unimplemented work.
@@ -19,7 +20,7 @@ const domains = [
   ['brief', 'A2', 'get_brief update_brief validate_brief prepare_confirmation confirm_brief'],
   ['source', 'A3', 'list_sources request_source_access read_source record_source'],
   ['vocabulary', 'A2', 'list_vocabulary register_icons update_icon_metadata retire_icon restore_icon'],
-  ['scheme', 'A2', 'list_schemes get_scheme create_scheme update_scheme archive_scheme restore_scheme set_preferred_scheme'],
+  ['scheme', 'A2', 'list_schemes get_scheme create_scheme update_scheme archive_scheme restore_scheme set_primary_scheme'],
   ['rules', 'A3', 'get_design_rules set_design_rules get_impact'],
   ['variant', 'A3', 'list_variants register_variants retire_variant restore_variant'],
   ['batch', 'A3', 'create_batch get_batch update_batch start_batch'],
@@ -30,7 +31,7 @@ const domains = [
   ['scene', 'A3', 'get_scene_presets get_usage_bindings set_usage_bindings get_context_preview'],
   ['review', 'A3', 'record_feedback list_feedback resolve_feedback record_review get_review_status'],
   ['history', 'A3', 'list_history get_revision compare_revisions undo redo restore_revision'],
-  ['delivery', 'A3', 'prepare_export get_export read_artifact'],
+  ['delivery', 'A3', 'prepare_export get_export read_artifact get_agent_handoff'],
   ['operation', 'A1', 'get_operation list_events wait_for_events cancel_operation get_recovery'],
   ['updates', 'A4', 'check_skill_updates get_skill_update_status'],
 ];
@@ -76,7 +77,7 @@ define('get_session', {
   data: object({ sessionId: id('session'), transport: enumeration('headless', 'local_http', 'browser_worker'), skill: skillSchema, revoked: bool }),
   handler: async runtime => ({ sessionId: runtime.sessionId, transport: runtime.transport, skill: runtime.skill, revoked: runtime.revoked }),
 });
-define('get_view_context', { description: '读取本会话真实导航、显示设置和网页连接状态。', data: viewSchema, requiresSkill: false, requiresStorage: false, handler: async runtime => runtime.view });
+define('get_view_context', { description: '读取真实导航、显示设置、网页连接及项目主方案；无需另查主线。', data: viewSchema, requiresSkill: false, requiresStorage: false, handler: viewContext });
 define('get_selection', { description: '读取显式选区；无网页或未选对象时返回 null，不自动选第一个图层。',
   data: object({ contextId: id('ctx'), selection: selectionSchema, uiStatus: enumeration('unattached', 'attached') }), requiresSkill: false, requiresStorage: false,
   handler: async runtime => ({ contextId: runtime.view.contextId, selection: runtime.view.selection, uiStatus: runtime.view.uiStatus }) });
@@ -92,8 +93,8 @@ define('revoke_session', { description: '撤销当前会话继续执行的权限
   handler: async runtime => { runtime.revoked = true; runtime.library = null; runtime.resetView(); return { revoked: true }; } });
 define('list_projects', { description: '读取授权库中项目摘要；默认 48 项、最多 100 项，不编译图标。',
   input: object({ ...page, search: shortText, status: enumeration('active', 'archived') }, []), data: pageOf(doc('project')), handler: listProjects });
-define('get_project', { description: '按明确项目身份读取元信息，不混同方案几何。', input: object(project), data: projectData,
-  handler: async (runtime, args) => ({ project: await readProject(runtime, args.projectId) }) });
+define('get_project', { description: '读取项目及主方案 ID、当前名称、确认时间，不混同方案几何。', input: object(project), data: object({ project: doc('project'), primaryScheme: primarySchemeSchema }),
+  handler: async (runtime, args) => { const project = await readProject(runtime, args.projectId); return { project, primaryScheme: await primaryScheme(runtime, project) }; } });
 define('create_project', { description: '建立草稿项目和空语义清单，不确认需求、不生成方案、不抢占当前页面。',
   input: object({ ...write, name: shortText, purpose: nullable(text) }, ['requestId', 'name']), data: projectData, mutates: true, persists: true, handler: createProject });
 define('update_project', { description: '更新显式项目的名称和目的摘要；sourceRevision 仅记录来源，不拦截旧副本。',
@@ -106,7 +107,7 @@ for (const [name, status] of [['archive_project', 'archived'], ['restore_project
 }
 define('open_project', { description: '读取并切换本会话到明确项目，清除之前的选区，不改变偏好方案。',
   input: object({ requestId, ...project }), data: viewSchema, mutates: true,
-  handler: async (runtime, args) => { await readProject(runtime, args.projectId); runtime.resetView(args.projectId); return runtime.view; } });
+  handler: async (runtime, args) => { await readProject(runtime, args.projectId); runtime.resetView(args.projectId); return viewContext(runtime); } });
 define('get_brief', { description: '读取项目当前需求草稿或确认稿；初始项目允许缺项。', input: object(project), data: object({ brief: doc('brief') }), handler: getBrief });
 define('list_schemes', { description: '按名称自然升序读取当前项目方案（先排序后分页）；零方案返回空列表。',
   input: object({ ...project, ...page }, ['projectId']), data: pageOf(doc('scheme')), handler: listSchemes });
@@ -115,6 +116,7 @@ registerProjectOperations(define);
 registerProductionOperations(define);
 registerMaintenanceOperations(define);
 registerSessionOperations(define);
+registerHandoffOperations(define);
 export const operationCatalog = Object.freeze(catalog);
 export function describeOperations() {
   return Object.values(operationCatalog).map(def => ({ name: def.name, domain: def.domain, phase: def.phase, description: def.description,

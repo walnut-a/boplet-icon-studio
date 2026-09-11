@@ -17,7 +17,8 @@
 | 查看 | `navigate {view:'structure',projectId,schemeId,iconId,variantId,requestId}`；`get_view_context`/`get_selection`/`get_layer`；没有节点选择返回 null |
 | 场景 | `set_usage_bindings {…变体身份,bindings:['toolbar'],requestId}`，`navigate {view:'scenes',projectId,schemeId,iconId,requestId}`，get_context_preview 不传隐藏 variantId |
 | 修改 | record_feedback 原文；需要新任务时 create_batch/start_batch，再 apply_operations、validate/compile；pause_task 后可重开用 get_recovery/resume_task 接续 |
-| 接受 | preview_icon 取得 contentHash，用户审核后 record_review accepted 与 evidenceReference；get_review_status 验证，不自动接受 |
+| 主线 | 用户明确确认后 set_primary_scheme {projectId,schemeId,evidenceReference,requestId}；取消用 schemeId:null；get_project/open_project/get_view_context 直接附主线信息。倾向或查看不算确认，修改不取消主线，不逐个图标审核 |
+| 交接 | get_agent_handoff {projectId,schemeId,scope:'scheme',language:'zh'}；图标加 iconId 和 scope:'icon'，尺寸再加 variantId 和 scope:'variant'。只读生成指令，不包含会话凭据或端口，不改主线 |
 | 导出 | prepare_export scope variant/icon/scheme/project，kind svg/source；accepted 则轮询 get_operation；最终 get_export、read_artifact |
 | 重开 | 使用相同目录重新启动，connect_library/list_projects/open_project/list_tasks/get_recovery，不重复生成项目 |
 
