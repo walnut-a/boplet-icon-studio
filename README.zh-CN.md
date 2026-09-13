@@ -6,7 +6,7 @@
 
 # 超好用的图标设计工具
 
-Skill 通过 GitHub 仓库分发，不使用 npm 发布。公开 Release 可用后，官网安装入口会指向完整 Release 包；也可以拉取固定版本源码构建。此前保留网站预览包。原始 `skill/` 目录不能直接安装。
+Skill 通过 [GitHub Releases](https://github.com/walnut-a/icon-studio/releases) 分发，不使用 npm 发布。官网安装入口指向完整 Release 包及 SHA-256；也可以拉取固定版本源码构建。当前发布仍为开发预览版，原始 `skill/` 目录不能直接安装。
 
 维护者请看[开发、本机测试与发布管线](docs/开发测试与发布.md)：同一验收候选用于本机安装、GitHub 附件和官网，准备产物不自动安装或发布。
 

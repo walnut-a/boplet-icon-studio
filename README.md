@@ -22,7 +22,7 @@ Boplet pairs a design Skill with a lightweight web workspace. The Skill guides t
 
 **Local:** copy the local instructions from the same page. Your assistant downloads and verifies the complete Skill package, installs it with your permission, and opens the bundled local workspace. Node.js 22.23.1 or later in the 22.x series is required on the host.
 
-Skill distribution is through this GitHub repository, not npm. Once public releases are available, the website will point to the complete GitHub Release package. You can also build from a pinned checkout; the raw `skill/` folder alone is not installable. Until then, the website provides the preview package.
+Skill distribution is through [GitHub Releases](https://github.com/walnut-a/icon-studio/releases), not npm. The website points to the complete Release package and its SHA-256 checksum. You can also build from a pinned checkout; the raw `skill/` folder alone is not installable. The current release is a development preview.
 
 Already have a project? Open [the workspace](https://boplet.app/studio/) to view and export it. No Agent or WebMCP is needed for viewing; your browser must support local folder access and you may need to authorize the folder again.
 
