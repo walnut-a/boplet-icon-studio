@@ -3,6 +3,8 @@ import { StudioError } from './errors.js';
 
 export const FORMAT_VERSION = 3;
 export const CONTRACT_VERSION = 3;
+// Contract revisions distinguish additive strict-schema changes without migrating v3 data.
+export const SCHEMA_REVISION = 2;
 export const identity = {
   libraryId: id('lib'), projectId: id('p'), schemeId: id('s'), iconId: id('i'), variantId: id('v'),
 };

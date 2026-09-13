@@ -1,0 +1,7 @@
+{
+  "name": "boplet",
+  "compatibility_date": "2026-09-12",
+  "assets": { "directory": "./dist/web", "not_found_handling": "404-page" },
+  "routes": [{ "pattern": "boplet.app", "custom_domain": true }],
+  "workers_dev": true
+}

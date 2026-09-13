@@ -5,6 +5,8 @@ import { MemoryStorage } from '../../src/storage/memory.js';
 const skill = { status: 'loaded', version: '0.1.0-dev.1', evidence: 'test' };
 test('薄服务校验凭据、Origin 和 Host，两个独立会话共享目录而非选区', async t => {
   const server = await startServer({ storage: new MemoryStorage(), skill }); t.after(server.close);
+  const health = await fetch(`${server.url}/health`).then(response => response.json());
+  assert.equal(health.contractVersion, 3); assert.equal(health.formatVersion, 3); assert.equal(health.schemaRevision, 2);
   const request = (path, body, headers = {}) => fetch(`${server.url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
   assert.equal((await request('/operation', { name: 'get_capabilities', input: {} })).status, 401);
   assert.equal((await request('/operation', {}, { Authorization: `Bearer ${server.token}`, Origin: 'https://evil.test' })).status, 403);

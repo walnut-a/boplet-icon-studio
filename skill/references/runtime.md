@@ -1,6 +1,16 @@
 # 运行、权限与恢复
 
+## 在线入口
+
+官网 https://boplet.app 说明用法；在线工具位于 https://boplet.app/studio/。Agent 开始设计前完整读取本站 /skill/SKILL.md、必要引用及版本（无需安装），取得 HTML 同意，再进入工作区。原生网关出现后，读取 `acknowledge_skill` 的单项 schema，并用写网关提交包版本、`fullSkillLoaded:true`、`htmlConsent:true` 和本次真实证据。该记录仅为宿主声明，不是安装扫描或人类身份认证；不得根据网页按钮点击推断已加载。
+
+用户可以自行收藏并打开工作区，选择/重新授权目录，浏览已有项目和导出图标；这条查看路径不需要 Agent、Skill 加载或 WebMCP，只需要浏览器目录能力。浏览器只保存目录句柄，不提供真实绝对路径。已有库使用 `connect_library(create:false)`；创建空库及设计修改仍要求 Skill 就绪和用户授权。刷新后自动尝试恢复目录及 URL 中的视图；权限失效由用户点击重新授权，不经 Agent 导入。Agent 如要继续设计才重新声明本次任务的 Skill 就绪；已有 HTML 同意未撤回时不重复询问。项目文件不会因刷新被迁移或复制。
+
+缺少原生 WebMCP、目录 API、授权失败或在线运行失败时，说明状态并使用下方本地入口。不要安装伪造 WebMCP、直接调用网页内部函数代替正式工具，也不要让在线页面调用 localhost。完整下载包及 SHA-256 见站点 `/downloads/release.json`；版本变化不自动替换已安装 Skill。
+
 ## 本地入口
+
+分发来源是 Boplet 的 GitHub 仓库 `walnut-a/icon-studio`，不通过 npm 发布。仓库公开并有正式可下载的 Release 后，优先安装该 Release 的完整 ZIP，并核对同一版本 `release.json` 的 SHA-256。当前官网 `/downloads/release.json` 是安装入口索引；是否可下载以实际响应为准，不把候选清单中的计划地址当已发布。只拉取源码时，应按仓库 README 构建完整包，不能直接把原始 `skill/` 当成可运行安装。更新须用户同意，保留旧安装及独立数据目录；不自动追踪主分支覆盖安装。
 
 需要 Node.js 22.23.1 或更新的 22.x。所有程序依赖已随包构建，无 npm 安装、Python、CDN 或账号依赖。系统 Node 是宿主运行前提，不打包 OS 二进制。
 
@@ -11,19 +21,19 @@
 macOS / shell（替换绝对路径与包版本）：
 
 ```sh
-ICON_STUDIO_SKILL_LOADED=0.1.0-dev.1 ICON_STUDIO_HTML_CONSENT=granted ICON_STUDIO_HTML_CONSENT_REFERENCE='本次用户明确同意的消息引用' node /absolute/skill/runtime/start.mjs /absolute/authorized-library
+ICON_STUDIO_SKILL_LOADED=0.1.0-dev.2 ICON_STUDIO_HTML_CONSENT=granted ICON_STUDIO_HTML_CONSENT_REFERENCE='本次用户明确同意的消息引用' node /absolute/skill/runtime/start.mjs /absolute/authorized-library
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:ICON_STUDIO_SKILL_LOADED = '0.1.0-dev.1'
+$env:ICON_STUDIO_SKILL_LOADED = '0.1.0-dev.2'
 $env:ICON_STUDIO_HTML_CONSENT = 'granted'
 $env:ICON_STUDIO_HTML_CONSENT_REFERENCE = '本次用户明确同意的消息引用'
 node 'C:\absolute\skill\runtime\start.mjs' 'C:\absolute\authorized-library'
 ```
 
-启动回执包含动态 `url`、本机会话 `token`、`sessionId`、`root`、`pid`、`reused`。保留工具返回的长任务 ID，不重复启动。默认只监听 127.0.0.1；打开回执 URL，不能继续打开旧端口或旧容器。
+启动回执包含动态 `url`、本机会话 `token`、`sessionId`、`root`、`pid`、`version`、`buildId`、`reused`。页面存储区域显示版本和 build ID 短码；两者任一与本次候选不符，都不能声称已加载新安装。保留工具返回的长任务 ID，不重复启动。默认只监听 127.0.0.1；打开回执 URL，不能继续打开旧端口或旧容器。
 
 服务启动仅为打开容器做准备。HTML 资产缺失时拒绝启动；页面未通过绑定会话的 bootstrap 连接时，`get_workflow` 返回 `html_required`，项目设计操作拒绝执行。先打开页面再继续；不要由 Agent 调用 bootstrap 冒充 HTML 页面。页面连接记录不是持续可见性证明，不宣称能检测所有关闭/崩溃；当前任务应实际检查页面可用，已知页面关闭或失效时暂停新的设计操作。测试内直接调用业务核心不代表提供无页面的产品入口。
 
@@ -48,7 +58,7 @@ const result = await response.json();
 
 两个对话需要独立指代时，用原凭据 POST `/sessions`，body `{}`，读取新 token/sessionId；在容器 `?session=<sessionId>` 打开绑定页面。项目数据共享，会话视图独立。新会话仍需 `connect_library(create:false)`。不是项目占用机制。
 
-WebMCP 优先：在支持的浏览器使用 `icon_studio_v3_get_workflow` 等工具。浏览器不支持时退回上述本地路径，但 HTML 页面仍必须打开，所有业务操作照常。允许在属性区域简短说明支持 WebMCP 的浏览器效率更高，不阻断用户。
+WebMCP 优先：先调用 `icon_studio_v3_get_workflow`，用 `list_operations` 定位业务名、`get_operation_schema` 读取该项输入，再按 `readOnly` 调用 `icon_studio_v3_read` 或 `icon_studio_v3_write`。浏览器不支持时退回上述本地路径，但 HTML 页面仍必须打开，所有业务操作照常。允许在属性区域简短说明支持 WebMCP 的浏览器效率更高，不阻断用户。
 
 ## 失败、来源与重开
 

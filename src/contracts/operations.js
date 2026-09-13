@@ -7,13 +7,14 @@ import { registerProductionOperations } from './production-operations.js';
 import { registerMaintenanceOperations } from './maintenance-operations.js';
 import { registerSessionOperations, selectionSchema, viewSchema, viewContext, primarySchemeSchema } from './session-operations.js';
 import { registerHandoffOperations } from './handoff-operations.js';
+import { StudioError } from './errors.js';
 export { viewSchema } from './session-operations.js';
 
 // This is the sole capability inventory, including explicitly unimplemented work.
 // Planned tools have no executable schema and are never registered with a transport.
 const domains = [
   ['discovery', 'A0', 'get_capabilities get_workflow'],
-  ['session', 'A1', 'get_session get_view_context get_selection revoke_session'],
+  ['session', 'A1', 'get_session get_view_context get_selection revoke_session acknowledge_skill'],
   ['navigation', 'A2', 'navigate set_view_options select_geometry'],
   ['storage', 'A1', 'get_storage request_storage_access get_permission_request disconnect_storage scan_projects connect_library'],
   ['project', 'A2', 'list_projects get_project create_project update_project open_project archive_project restore_project'],
@@ -48,7 +49,10 @@ const projectData = object({ project: doc('project') });
 const skillSchema = object({ status: enumeration('not_loaded', 'loaded'), version: nullable(shortText), evidence: nullable(text) });
 const storageSchema = object({ connected: bool, kind: nullable(enumeration('memory', 'node', 'browser')), libraryId: nullable(identity.libraryId), location: nullable({ type: 'string' }) });
 
-function define(name, { description, input = empty, data, handler, mutates = false, requiresStorage = true, requiresSkill = true, persists = false }) {
+// Viewing existing files and explicit export are usable without a design Agent.
+// This allowlist does not authorize source creation, edits, compilation or confirmation.
+const viewerOperations = new Set('connect_library disconnect_storage list_projects get_project open_project get_brief list_schemes get_scheme list_variants query_icons get_icon get_layer preview_icon get_context_preview get_design_rules get_usage_bindings get_scene_presets navigate set_view_options select_geometry prepare_export get_export read_artifact get_agent_handoff get_operation'.split(' '));
+function define(name, { description, input = empty, data, handler, mutates = false, requiresStorage = true, requiresSkill = !viewerOperations.has(name), persists = false }) {
   catalog[name] = { ...catalog[name], description, inputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:input:${name}`, ...input },
     dataSchema: data, outputSchema: { $id: `urn:icon-studio:v${CONTRACT_VERSION}:output:${name}`, ...(data.$defs ? { $defs: data.$defs } : {}), ...resultSchema(data) },
     handler, mutates, requiresStorage, requiresSkill, persists };
@@ -69,13 +73,23 @@ define('get_workflow', {
   handler: async runtime => {
     let stage = runtime.skill.status !== 'loaded' ? 'skill_required' : runtime.requireUI && !runtime.attached ? 'html_required' : !runtime.library ? 'storage_required' : 'project_ready';
     if (stage === 'project_ready' && runtime.view.projectId) stage = (await getBrief(runtime, { projectId: runtime.view.projectId })).brief.status === 'confirmed' ? 'design_ready' : 'brief_required';
-    return { stage, nextActions: { skill_required: [], html_required: ['get_view_context'], storage_required: ['connect_library'], project_ready: ['list_projects', 'create_project'], brief_required: ['get_brief', 'update_brief', 'validate_brief', 'prepare_confirmation'], design_ready: ['list_schemes', 'get_design_rules', 'list_tasks', 'get_recovery'] }[stage], scope: 'full_skill' };
+    return { stage, nextActions: { skill_required: ['acknowledge_skill'], html_required: ['get_view_context'], storage_required: ['connect_library'], project_ready: ['list_projects', 'create_project'], brief_required: ['get_brief', 'update_brief', 'validate_brief', 'prepare_confirmation'], design_ready: ['list_schemes', 'get_design_rules', 'list_tasks', 'get_recovery'] }[stage], scope: 'full_skill' };
   },
 });
 define('get_session', {
   description: '读取当前核心会话和实际传输；浏览器是否已接入另看上下文状态。', requiresSkill: false, requiresStorage: false,
   data: object({ sessionId: id('session'), transport: enumeration('headless', 'local_http', 'browser_worker'), skill: skillSchema, revoked: bool }),
   handler: async runtime => ({ sessionId: runtime.sessionId, transport: runtime.transport, skill: runtime.skill, revoked: runtime.revoked }),
+});
+define('acknowledge_skill', {
+  description: '宿主实际加载完整 Skill 并取得用户 HTML 许可后转述证据；属于宿主声明，不是安装检测或身份认证。网页按钮不得自行调用。',
+  input: object({ requestId, version: shortText, fullSkillLoaded: { const: true }, htmlConsent: { const: true }, evidence: shortText }),
+  data: object({ skill: skillSchema }), requiresSkill: false, requiresStorage: false, mutates: true,
+  handler: async (runtime, args) => {
+    if (!runtime.attached) throw new StudioError('PERMISSION_REQUIRED', '请先打开 HTML 容器。');
+    runtime.skill = { status: 'loaded', version: args.version, evidence: `host_attestation: ${args.evidence}` };
+    return { skill: runtime.skill };
+  },
 });
 define('get_view_context', { description: '读取真实导航、显示设置、网页连接及项目主方案；无需另查主线。', data: viewSchema, requiresSkill: false, requiresStorage: false, handler: viewContext });
 define('get_selection', { description: '读取显式选区；无网页或未选对象时返回 null，不自动选第一个图层。',

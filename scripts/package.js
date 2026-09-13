@@ -5,10 +5,11 @@ import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { zipSync } from 'fflate';
 import { buildApplication, buildContracts } from './build.js';
+import { CONTRACT_VERSION, FORMAT_VERSION, SCHEMA_REVISION } from '../src/contracts/models.js';
 
 const sourceFiles = ['SKILL.md', 'references/runtime.md', 'references/design-method.md', 'references/data-and-maintenance.md', 'references/workflows.md'];
 const licenses = ['ajv/LICENSE', 'paper/LICENSE.txt', 'fflate/LICENSE', 'fast-deep-equal/LICENSE', 'fast-uri/LICENSE', 'json-schema-traverse/LICENSE', 'require-from-string/license'];
-const allowed = new Set([...sourceFiles, 'contracts.json', 'version.json', 'runtime/start.mjs', 'app/index.html', 'app/style.css', 'app/app.js', 'package-manifest.json', ...licenses.map(p => 'licenses/'+p.replaceAll('/','-'))]);
+const allowed = new Set([...sourceFiles, 'LICENSE', 'contracts.json', 'version.json', 'runtime/start.mjs', 'app/index.html', 'app/style.css', 'app/app.js', 'package-manifest.json', ...licenses.map(p => 'licenses/'+p.replaceAll('/','-'))]);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 async function files(directory, prefix = '') {
   const result = [];
@@ -24,6 +25,7 @@ export async function buildSkill(directory) {
   if ((await readdir(directory)).length) throw Error('候选输出目录必须为空；不得覆盖已有安装包或用户文件。');
   const { version } = JSON.parse(await readFile('package.json','utf8'));
   await buildContracts(directory); await buildApplication(directory);
+  await copyFile('LICENSE', join(directory, 'LICENSE'));
   for (const file of sourceFiles) { await mkdir(dirname(join(directory,file)),{recursive:true}); await copyFile(join('skill',file),join(directory,file)); }
   await mkdir(join(directory,'runtime'),{recursive:true});
   const result = await build({ stdin: { contents: (await readFile('src/runtime/skill-entry.js','utf8')).replaceAll('__SKILL_VERSION__',version), resolveDir: resolve('src/runtime'), sourcefile: 'skill-entry.js' },
@@ -32,10 +34,10 @@ export async function buildSkill(directory) {
   // Browser Paper.js adapters are optional; no unbundled production package is allowed.
   for (const output of Object.values(result.metafile.outputs)) for (const dep of output.imports) if (dep.external && !dep.path.startsWith('node:') && !['fs','path','os','url','http','https','module','vm','util','jsdom','canvas','jsdom/lib/jsdom/living/generated/utils'].includes(dep.path)) throw Error(`未随包提供的运行依赖：${dep.path}`);
   for (const file of licenses) { const destination = join(directory,'licenses',file.replaceAll('/','-')); await mkdir(dirname(destination),{recursive:true}); await copyFile(join('node_modules',file),destination); }
-  await writeFile(join(directory,'version.json'),JSON.stringify({ skillId:'make-product-icons', version, contractVersion:3,formatVersion:3,releaseSource:null,stage:'candidate',productionReady:false },null,2)+'\n');
+  await writeFile(join(directory,'version.json'),JSON.stringify({ skillId:'make-product-icons', version, contractVersion:CONTRACT_VERSION,formatVersion:FORMAT_VERSION,schemaRevision:SCHEMA_REVISION,releaseSource:null,stage:'candidate',productionReady:false },null,2)+'\n');
   const entries=[];
   for (const path of await files(directory)) { const content=await readFile(join(directory,path)); entries.push({path,bytes:content.length,sha256:sha(content)}); }
-  await writeFile(join(directory,'package-manifest.json'),JSON.stringify({version,files:entries},null,2)+'\n');
+  await writeFile(join(directory,'package-manifest.json'),JSON.stringify({version,contractVersion:CONTRACT_VERSION,formatVersion:FORMAT_VERSION,schemaRevision:SCHEMA_REVISION,files:entries},null,2)+'\n');
   return inspectPackage(directory);
 }
 export async function inspectPackage(directory) {
@@ -46,14 +48,22 @@ export async function inspectPackage(directory) {
   for(const entry of manifest.files){if(!allowed.has(entry.path)||entry.path==='package-manifest.json')throw Error('非法清单路径');const content=await readFile(join(directory,entry.path));if(content.length!==entry.bytes||sha(content)!==entry.sha256)throw Error(`哈希不符：${entry.path}`);
     if(/hetao-app|hetao-status|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|\/Users\/zhaolixing|session-[a-f0-9]{8}-/.test(content.toString('utf8')))throw Error(`发现真实数据或凭据痕迹：${entry.path}`);
   }
-  return {ok:true,files:paths,version:manifest.version};
+  return {ok:true,files:paths,version:manifest.version,buildId:`sha256-${sha(await readFile(join(directory,'package-manifest.json')))}`};
+}
+export async function archiveSkill(directory) {
+  const report = await inspectPackage(directory), archive = {};
+  for (const path of report.files) archive[`make-product-icons/${path}`] = [new Uint8Array(await readFile(join(directory, path))), { mtime: new Date(2026, 0, 1) }];
+  const bytes = zipSync(archive, { level: 9 });
+  return { report, bytes, sha256: sha(bytes) };
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
-  const base=resolve('outputs/icon-studio-next');
+  const outputIndex = process.argv.indexOf('--output');
+  if (outputIndex >= 0 && !process.argv[outputIndex + 1]) throw Error('--output 需要明确目录');
+  const base=resolve(outputIndex >= 0 ? process.argv[outputIndex + 1] : 'outputs/icon-studio-next');
   if(process.argv.includes('--check')) console.log(JSON.stringify(await inspectPackage(join(base,'skill')),null,2));
   else {
-    const report=await buildSkill(join(base,'skill'));const archive={};for(const path of report.files)archive[`make-product-icons/${path}`]=[new Uint8Array(await readFile(join(base,'skill',path))),{mtime:new Date(2026,0,1)}];
-    const bytes=zipSync(archive,{level:9});await writeFile(join(base,'make-product-icons.zip'),bytes);await writeFile(join(base,'sha256.txt'),sha(bytes)+'  make-product-icons.zip\n');
+    await buildSkill(join(base,'skill')); const { report, bytes } = await archiveSkill(join(base,'skill'));
+    await writeFile(join(base,'make-product-icons.zip'),bytes);await writeFile(join(base,'sha256.txt'),sha(bytes)+'  make-product-icons.zip\n');
     console.log(JSON.stringify({version:report.version,files:report.files.length,bytes:bytes.length,sha256:sha(bytes),installed:false,deployed:false}));
   }
 }

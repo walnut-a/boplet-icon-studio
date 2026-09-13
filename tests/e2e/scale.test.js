@@ -26,9 +26,9 @@ test('600 图标真实页面只渲染 48 张，标题对齐，缓存详情切换
   await mkdir('.impeccable/review',{recursive:true});await page.screenshot({path:'.impeccable/review/list-600.png',fullPage:true});
   await page.locator('.icon-tile').first().click();await page.locator('.canvas svg').waitFor();
   const measurements=await page.evaluate(async()=>{
-    const tools=await document.modelContext.getTools();const call=async(name,input={})=>JSON.parse(await document.modelContext.executeTool(tools.find(t=>t.name==='icon_studio_v3_'+name),JSON.stringify(input)));
+    const tools=await document.modelContext.getTools();const call=async(name,input={},write=false)=>JSON.parse(await document.modelContext.executeTool(tools.find(t=>t.name===`icon_studio_v3_${write?'write':'read'}`),JSON.stringify({name,input})));
     const context=(await call('get_view_context')).data;const target=Object.fromEntries(['projectId','schemeId','iconId','variantId'].map(k=>[k,context.selection[k]]));const times=[];
-    for(let n=0;n<20;n++){const start=performance.now();const r=await call('navigate',{...target,variantId:`v-size-${n%4}`,view:'structure',requestId:crypto.randomUUID()});if(!r.ok)throw Error(JSON.stringify(r));times.push(performance.now()-start);}return times;
+    for(let n=0;n<20;n++){const start=performance.now();const r=await call('navigate',{...target,variantId:`v-size-${n%4}`,view:'structure',requestId:crypto.randomUUID()},true);if(!r.ok)throw Error(JSON.stringify(r));times.push(performance.now()-start);}return times;
   });
   const p95=measurements.sort((a,b)=>a-b)[18];assert.ok(p95<=200,`缓存详情切换 p95 ${p95}ms`);
   await page.getByRole('button',{name:'返回图标列表',exact:true}).click();await expect(page.locator('.icon-tile')).toHaveCount(48);await page.getByRole('button',{name:'下一页',exact:true}).click();await expect(page.locator('.pagination small')).toHaveText('2 / 13');

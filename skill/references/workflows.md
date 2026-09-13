@@ -24,7 +24,7 @@
 
 ## 原生 WebMCP
 
-在已绑定会话的页面上调用 `icon_studio_v3_<操作名>`。所有业务步骤使用注册工具，浏览器点击仅用于用户查看、选择、下载。浏览器只显示页面而未注册工具时不能声称 WebMCP 已连接。
+在已绑定会话的页面上先调用 `icon_studio_v3_get_workflow`。用 `icon_studio_v3_list_operations` 找到业务操作，再用 `icon_studio_v3_get_operation_schema` 读取单项输入合同；只读操作通过 `icon_studio_v3_read`，写操作通过 `icon_studio_v3_write`。五个网关只负责传输，96 个业务操作仍由同一合同和核心执行。浏览器点击仅用于用户查看、选择、下载；页面能显示但网关未注册时不能声称 WebMCP 已连接。
 
 ## 不支持 WebMCP
 

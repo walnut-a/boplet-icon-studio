@@ -4,6 +4,7 @@ import { zipSync, strToU8 } from 'fflate';
 const $ = selector => document.querySelector(selector);
 const main = $('#main'), navigation = $('#navigation'), inspector = $('#inspector');
 let runtimeInfo = '';
+let onlineOptions = {};
 let token, context, capabilities, rendering = false, lastSnapshot = '', language = localStorage.getItem('icon-studio-language') ?? 'zh', options = { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 };
 const translations = { '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层或节点查看属性。': 'Select a layer or node to inspect it.', '设计目的': 'Purpose', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
 Object.assign(translations, {
@@ -18,14 +19,17 @@ Object.assign(translations, {
 const t = value => language === 'en' ? translations[value] ?? value : value;
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rid = () => crypto.randomUUID();
+const online = typeof __BOPLET_WEB__ !== 'undefined' && __BOPLET_WEB__;
+let onlineExecute;
 const error = message => { $('#error').textContent = message; $('#error').hidden = !message; if (message) $('#startup').hidden = true; };
 const button = (label, action, attrs = '') => `<button data-action="${action}" ${attrs}>${esc(t(label))}</button>`;
 const empty = (title, description = '') => `<div class="empty"><h2>${esc(t(title))}</h2><p>${esc(t(description))}</p></div>`;
-const storageDetails = storage => `<section class="project-storage"><h2>${esc(t('存储位置'))}</h2><p id="storage-location">${esc(storage.location ?? t(storage.connected ? '未提供' : '未连接'))}</p><small>${esc(runtimeInfo)}</small><div class="storage-actions">${button('刷新', 'refresh', 'id="refresh"')}${button('断开目录', 'disconnect', `id="disconnect" ${storage.connected ? '' : 'disabled'}`)}</div></section>`;
+const storageDetails = storage => `<section class="project-storage"><h2>${esc(t('存储位置'))}</h2><p id="storage-location">${esc((online ? onlineOptions.directoryName : storage.location) ?? t(storage.connected ? '未提供' : '未连接'))}</p><small>${esc(runtimeInfo)}</small><div class="storage-actions">${button('刷新', 'refresh', 'id="refresh"')}${button('断开目录', 'disconnect', `id="disconnect" ${storage.connected ? '' : 'disabled'}`)}</div></section>`;
 const scope = keys => Object.fromEntries(keys.map(k => [k, context.selection[k]]).filter(([, value]) => value));
 const iconScope = () => scope(['projectId', 'schemeId', 'iconId']);
 const variantScope = () => scope(['projectId', 'schemeId', 'iconId', 'variantId']);
 async function raw(name, input = {}, signal) {
+  if (online) return onlineExecute(name, input, signal);
   const response = await fetch('/operation', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ name, input }), signal });
   if (!response.ok) throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));
   return response.json();
@@ -33,7 +37,11 @@ async function raw(name, input = {}, signal) {
 async function run(name, input = {}) {
   let result = await raw(name, input);
   while (result.status === 'accepted') { await new Promise(resolve => setTimeout(resolve, 100)); result = (await raw('get_operation', { operationId: result.operationId })).data.result; }
-  if (!result.ok) throw Error(result.error.message); return result.data;
+  if (!result.ok) {
+    const issues = result.error.issues.map(issue => issue.field ? `${issue.path || '/'}:${issue.field}` : issue.path || issue.keyword).join(', ');
+    throw Error(`${name}: ${result.error.message}${issues ? ` [${issues}]` : ''}`);
+  }
+  return result.data;
 }
 async function navigate(view, args = {}, push = true) {
   await run('navigate', { requestId: rid(), view, ...args });
@@ -124,7 +132,7 @@ async function render(force = false) {
     $('.workspace-body').classList.toggle('is-onboarding', onboarding);
     navigation.innerHTML = navigation.hidden ? '' : `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => `<button data-action="scheme" data-id="${s.schemeId}" class="scheme-link${project.primarySchemeId && project.primarySchemeId !== s.schemeId ? ' scheme-secondary' : ''}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"><span>${esc(s.name)}</span>${project.primarySchemeId === s.schemeId ? `<span class="scheme-confirmed">${esc(t('已确认'))}</span>` : ''}</button>`).join('')}</nav>`;
     inspector.hidden = true; inspector.innerHTML = '';
-    if (!storage.connected) { main.innerHTML = empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); wrapPage('library'); return; }
+    if (!storage.connected) { main.innerHTML = online ? empty(language === 'zh' ? '这个目录还没有项目库' : 'No library in this folder', language === 'zh' ? '可以换一个已有项目的目录，或让 Agent 加载 Skill 后在此创建。' : 'Choose an existing project folder, or ask your Agent to load the Skill and create a library here.') + button('断开目录', 'disconnect') + button('连接已有目录', 'connect') : empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); wrapPage('library'); return; }
     if (next.view === 'library') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('项目库'))}</h1></div>` + (!data.items.length ? empty('暂无项目', '在对话中描述设计需求，即可开始一个新项目。') : `<div class="project-list">${data.items.map(p => `<button class="project-row" data-action="open-project" data-id="${p.projectId}"><span><strong>${esc(p.name)}</strong><small>${esc(p.purpose ?? '')}</small></span><small>${esc(p.updatedAt.slice(0, 10))}</small></button>`).join('')}</div>`);
       main.innerHTML += storageDetails(storage);
@@ -220,7 +228,7 @@ document.addEventListener('click', async event => {
   const element = event.target.closest('[data-action]'); if (!element || element.disabled) return; error('');
   try { const action = element.dataset.action;
     if (action === 'refresh') await render(true);
-    else if (action === 'disconnect') { await run('disconnect_storage',{requestId:rid()}); await render(true); }
+    else if (action === 'disconnect') { if (online) { await onlineOptions.disconnect(); return; } await run('disconnect_storage',{requestId:rid()}); await render(true); }
     else if (action === 'library') await navigate('library');
     else if (action === 'project') await navigate('project', { projectId: context.projectId });
     else if (action === 'open-project') await navigate('project', { projectId: element.dataset.id });
@@ -247,12 +255,19 @@ window.addEventListener('popstate',restoreRoute);
 let resizeTimer;
 window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>render(true),100);});
 async function start(){
-  try{const boot=await fetch('/bootstrap'+location.search,{method:'POST'});if(!boot.ok)throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));({token}=await boot.json());capabilities=await run('get_capabilities');
-    const mcp=await registerWebMCP(document.modelContext,capabilities,async(name,args,signal)=>{const result=await raw(name,args,signal);if(result.ok&&capabilities.operations.find(o=>o.name===name)?.readOnly===false)await render(true);return result;});
-    runtimeInfo=mcp.available?'WebMCP · '+capabilities.skill.version:'本地运行 · '+(capabilities.skill.version??'未知版本');
+  try{let boot = {}; if (!online) { const response=await fetch('/bootstrap'+location.search,{method:'POST'});if(!response.ok)throw Error(t('连接失败，请刷新或按 Skill 说明重新启动本地服务。'));boot=await response.json();token=boot.token; } capabilities=await run('get_capabilities');
+    const mcp=online ? { available: true } : await registerWebMCP(document.modelContext,capabilities,async(name,args,signal)=>{const result=await raw(name,args,signal);if(result.ok&&capabilities.operations.find(o=>o.name===name)?.readOnly===false)await render(true);return result;});
+    const build=boot.buildId?` · ${boot.buildId.slice(-8)}`:'';
+    runtimeInfo=online ? (onlineOptions.webmcp ? 'WebMCP' : (language === 'zh' ? '在线查看' : 'Online viewer')) : `${mcp.available?'WebMCP':'本地运行'} · ${capabilities.skill.version??'未知版本'}${build}`;
     await restoreRoute();await render(true);
     setInterval(()=>{if(!document.hidden)render();},1500);
     const updates=await run('get_skill_update_status');if(updates.status==='update_available'){$('#update').hidden=false;$('#update').textContent=`Skill ${updates.latestVersion} 可更新。`;}
   }catch(e){error(e.message);}
 }
-start();
+export async function mountOnline(execute, options = {}) {
+  onlineExecute = execute; onlineOptions = options;
+  const home = document.createElement('a'); home.href = '/'; home.textContent = language === 'zh' ? '返回官网' : 'Back to website'; home.className = 'online-home';
+  $('.skill-footer').append(home);
+  await start(); return () => render(true);
+}
+if (!online) start();

@@ -56,8 +56,8 @@ export function createStudio({ storage, sources = null, updateSource = null, upd
       if (args.expectedContextId && Object.keys(identity).some(k => args[k] && args[k] !== runtime.view.selection[k])) throw new StudioError('CONTEXT_CHANGED', '显式目标与当前指代对象不符。');
       for (const key of Object.keys(identity)) if (args[key]) base.target[key] = args[key];
       if (runtime.revoked && !['get_capabilities', 'get_session', 'get_storage', 'get_view_context', 'get_selection'].includes(name)) throw new StudioError('PERMISSION_DENIED', '当前会话已撤销。');
-      if (def.requiresSkill && runtime.skill.status !== 'loaded') throw new StudioError('CAPABILITY_UNAVAILABLE', '需要先由宿主安装并加载 Skill。', { nextActions: ['get_workflow'] });
-      if (runtime.requireUI && !runtime.attached && def.requiresStorage && def.requiresSkill) throw new StudioError('PERMISSION_REQUIRED', '请先打开本会话的 HTML 容器；不能在没有页面的情况下进入设计流程。', { nextActions: ['get_workflow', 'get_view_context'] });
+      if ((def.requiresSkill || (name === 'connect_library' && args.create)) && runtime.skill.status !== 'loaded') throw new StudioError('CAPABILITY_UNAVAILABLE', '设计操作需要先由宿主完整加载 Skill。', { nextActions: ['get_workflow'] });
+      if (runtime.requireUI && !runtime.attached && def.requiresStorage) throw new StudioError('PERMISSION_REQUIRED', '请先打开本会话的 HTML 容器；不能在没有页面的情况下进入设计流程。', { nextActions: ['get_workflow', 'get_view_context'] });
       if (def.requiresStorage && !runtime.library) throw new StudioError('PERMISSION_REQUIRED', '尚未连接已授权的数据目录。', { nextActions: ['get_storage'] });
       if (def.mutates) {
         const fingerprint = canonicalJson({ name, args });

@@ -1,10 +1,13 @@
 import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { NodeStorage } from '../src/storage/node.js';
 import { startServer } from '../src/runtime/server.js';
 const root = process.argv[2];
 if (!root) throw Error('请传入明确授权的数据目录；启动不会自动选择或覆盖旧目录。');
+if (process.env.ICON_STUDIO_HTML_CONSENT !== 'granted' || !process.env.ICON_STUDIO_HTML_CONSENT_REFERENCE?.trim()) throw Error('仓库开发预览也必须先取得本次 HTML 使用同意并提供答复引用。');
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const storage = await NodeStorage.open(root, { create: true });
-const server = await startServer({ storage, skill: { status: 'loaded', version: '0.1.0-dev.1', evidence: 'repository-development' }, appDirectory: resolve('dist/app') });
+const server = await startServer({ storage, skill: { status: 'loaded', version, evidence: 'repository-development' }, buildId: `repository-development-${version}`, appDirectory: resolve('dist/app'), requireUI: true });
 console.log(JSON.stringify({ ...server, close: undefined, root: resolve(root), pid: process.pid }));
 process.on('SIGTERM', async () => { await server.close(); process.exit(0); });
 process.on('SIGINT', async () => { await server.close(); process.exit(0); });

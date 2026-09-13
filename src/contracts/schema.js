@@ -24,7 +24,8 @@ export const positiveInteger = { type: 'integer', minimum: 1 };
 export function assertSchema(schema, value) {
   const validate = (schema.$id ? ajv.getSchema(schema.$id) : undefined) ?? ajv.compile(schema);
   if (!validate(value)) {
-    const issues = validate.errors.map(error => ({ path: error.instancePath, keyword: error.keyword }));
+    const issues = validate.errors.map(error => ({ path: error.instancePath, keyword: error.keyword,
+      field: error.keyword === 'additionalProperties' ? error.params.additionalProperty : error.keyword === 'required' ? error.params.missingProperty : null }));
     throw new StudioError('VALIDATION_FAILED', '输入或数据不符合当前合同。', { issues });
   }
   return value;

@@ -18,14 +18,15 @@ description: Boplet — Icon Studio. Design, extend, inspect, and deliver cohere
 3. 安装和加载分开判断：文件落地是安装；当前 Agent 读完本文件和所需规范才是加载。启动器的加载声明是宿主转述，不是加密验证。
 4. 先走支持原生 WebMCP 的容器；没有 WebMCP 仍可在 HTML 页面保持打开的前提下通过同一包的本地调用完整工作，不把 WebMCP 当使用门槛。网页来源/目录权限不可靠时切换本地容器，重新授权同一数据目录；不要复制业务数据进 HTML。
 
-当前包提供本地容器；不表示在线站点已经部署。在线纯浏览器读写授权目录由后续网页版本提供，不让公网页面调用 localhost。
+官网为 https://boplet.app，在线工作区为 https://boplet.app/studio/。用户自行查看和导出已有项目不需要 Agent 或 Skill 加载；Agent 开始设计前仍须完整加载本 Skill 并取得 HTML 同意，再按运行规范使用原生 WebMCP 声明就绪。目录由用户直接选择或重新授权，不让 Agent 反复导入数据。在线设计不可用时使用包内本地容器，不让公网页面调用 localhost。
 
 ## 规范与工具
 
 - 设计前读取 [设计方法](references/design-method.md)。进入修改前读取 [数据与维护](references/data-and-maintenance.md)。
 - 两条完整路径见 [流程示例](references/workflows.md)。本地标准请求见 [运行与恢复](references/runtime.md)。
-- **`contracts.json` 是工具输入、输出和数据结构的唯一机器合同**；运行中的 `get_capabilities` 返回同一份合同。按本文件给出的流程定位具名操作，再读取这些操作的 schema，不枚举猜测 MCP。不要自造旧工具名或混用 `projectKey`。
-- WebMCP 具名工具以 `icon_studio_v3_` 开头；本地 `/operation` 使用不带前缀的同名操作。核心、校验和落盘一致，不实现两套几何引擎。
+- **`contracts.json` 是工具输入、输出和数据结构的唯一机器合同**；运行中的 `get_capabilities` 返回同一份合同。按本文件给出的流程定位业务操作，再读取单项 schema，不要求宿主一次加载完整目录。不要自造旧工具名或混用 `projectKey`。
+- WebMCP 固定使用 `icon_studio_v3_get_workflow`、`list_operations`、`get_operation_schema`、`read`、`write` 五个网关：先读取业务操作 schema，再按 `readOnly` 走读或写网关。本地 `/operation` 仍使用不带前缀的业务操作名。两条传输共用核心、校验和落盘，不实现两套几何引擎。
+- 合同失败时报告业务操作、字段路径、Skill 版本和 build ID；旁路磁盘诊断不能冒充具名操作成功，也不能据此修改或交付数据。
 - 每个写操作提供新的 `requestId`。网络回执不确定时只重试原 ID 和原参数；过期先读状态。`sourceRevision` 说明来源，不是锁；同一目标最后成功保存生效。原则上不建议多个 Agent 同时改同一项目，但不阻止用户这样使用。
 - 用户说“这个”“选中的”时，先读 `get_view_context` 和 `get_selection`，传回 `expectedContextId` 与明确身份；没有选择就不能猜。场景页面不具有隐藏的结构节点选区。
 - `accepted` 只表示已受理，继续用 `get_operation` 等最终回执；`waiting_user` 等用户授权/确认；`failed` 不宣称完成。批量逐项结果中有失败就如实报告。保存、验证、编译、用户接受和导出不是同一状态。

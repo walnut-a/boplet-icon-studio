@@ -16,6 +16,7 @@ test('build produces a deterministic, resolvable contract bundle, never user dat
     assert.equal(bundle.stage, 'skill_candidate');
     assert.equal(bundle.productionReady, false);
     assert.equal(bundle.contractVersion, 3);
+    assert.equal(bundle.schemaRevision, 2);
     assert.ok(bundle.documents.matrix);
     const consumer = new Ajv({ strict: true });
     consumer.addFormat('studio-time', ajv.formats['studio-time']);

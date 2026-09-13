@@ -6,6 +6,8 @@
 
 严格 JSON schema 拒绝未知字段、重复节点/图层身份、非有限数值、循环组件以及不兼容格式。`contracts.json` 同时包含所有文档 schema 与操作 schema；不要额外创建一套似是而非的 metadata。
 
+`formatVersion` 表示磁盘格式大版本；`schemaRevision` 表示同一格式内严格合同的增量修订。候选包、manifest、健康检查和页面运行信息必须报告 schema revision 与 build ID。新增可选字段时，当前读取器应为缺失字段提供只读默认值；会使旧读取器拒绝的数据写入，必须先提升 Skill 预发布版本并完成目标安装版更新，不能让仓库开发预览先写真实库再由旧安装版读取。
+
 需求六项为 `purpose`（设计目的）、`stylePreferences`（风格偏好）、`audience`、`usage`、`scope`、`constraints`。校验与确认使用相同字段；不使用旧 `goals`，不自动映射旧内容。风格偏好不得包含 Agent 未经用户要求预设的具体造型，具体思路留给方案。历史不兼容内容仅封存。
 
 项目保存 `primarySchemeId`、`primarySchemeConfirmedAt`、`primarySchemeEvidence`，未选择时均为 null。同一 v3 项目缺少这些新增字段时，读取按未选择处理，不回写、不重建图标；允许保留 `preferredSchemeId`，但它不代表用户确认，也不映射为主方案。`set_primary_scheme` 要求真实用户确认引用，正常保存新增字段；同一项目最后一次成功选择生效。读取项目及视图时附带 `primaryScheme`（ID、当前名称、确认时间），名称实时解析而非重复存储。确认设计方向，不绑定几何 hash，不因图标修改失效。默认不删除或归档数据。未知格式仍不迁移。

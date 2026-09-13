@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { startServer } from '../../src/runtime/server.js';
 import { NodeStorage } from '../../src/storage/node.js';
+import { operationCatalog } from '../../src/contracts/operations.js';
 
 for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 HTTP'}：空目录到编译、界面、选区、导出、重开`, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'icon-e2e-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const serverOptions = { storage: await NodeStorage.open(directory), skill: { status: 'loaded', version: '0.1.0-dev.1', evidence: 'isolated-e2e' }, appDirectory: resolve(process.env.ICON_STUDIO_TEST_APP ?? 'dist/app'), requireUI: true };
+  const serverOptions = { storage: await NodeStorage.open(directory), skill: { status: 'loaded', version: '0.1.0-dev.2', evidence: 'isolated-e2e' }, buildId: 'sha256-0000000000000000000000000000000000000000000000000000000012345678', appDirectory: resolve(process.env.ICON_STUDIO_TEST_APP ?? 'dist/app'), requireUI: true };
   let server = await startServer(serverOptions); t.after(() => server.close());
   const browser = await chromium.launch({ channel: 'chrome', headless: true, args: native ? ['--enable-experimental-web-platform-features'] : [] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1903, height: 1320 } }); const errors=[]; page.on('pageerror',e=>errors.push(e.message));
@@ -25,10 +26,11 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   } finally { releaseStartup(); }
   await page.getByRole('button', { name: '连接已有目录', exact: true }).waitFor();
   await expect(page.locator('#startup')).toBeHidden();
-  if (native) await page.waitForFunction(async () => document.modelContext && (await document.modelContext.getTools()).length === 96);
+  if (native) await page.waitForFunction(async () => document.modelContext && (await document.modelContext.getTools()).length === 5);
   const invoke = async (name, input = {}) => {
     const response = native ? null : await fetch(`${server.url}/operation`, { method: 'POST', headers: { Authorization: `Bearer ${server.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, input }) });
-    let result = native ? await page.evaluate(async ({name,input}) => { const tools = await document.modelContext.getTools(); const tool = tools.find(t=>t.name==='icon_studio_v3_'+name); return JSON.parse(await document.modelContext.executeTool(tool,JSON.stringify(input))); }, {name,input}) : await response.json();
+    const gateway = name === 'get_workflow' ? 'get_workflow' : operationCatalog[name].mutates ? 'write' : 'read';
+    let result = native ? await page.evaluate(async ({name,input,gateway}) => { const tools = await document.modelContext.getTools(); const tool = tools.find(t=>t.name==='icon_studio_v3_'+gateway); const payload=gateway==='get_workflow'?{}:{name,input}; return JSON.parse(await document.modelContext.executeTool(tool,JSON.stringify(payload))); }, {name,input,gateway}) : await response.json();
     while (result.status === 'accepted') { await new Promise(r => setTimeout(r, 30)); result = (await invoke('get_operation', { operationId: result.operationId })).result; }
     assert.equal(result.ok, true, `${name}: ${JSON.stringify(result)}`); return result.data;
   };
@@ -137,6 +139,8 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await expect(page.locator('.workspace-header #library-back svg')).toHaveCount(1);
   await expect(page.locator('#main #storage-location')).toBeVisible();
   await expect(page.locator('#storage-location')).toHaveText(serverOptions.storage.identity);
+  await expect(page.locator('.project-storage small')).toContainText('0.1.0-dev.2');
+  await expect(page.locator('.project-storage small')).toContainText('12345678');
   assert.equal((await invoke('get_storage')).location, serverOptions.storage.identity);
   await page.getByRole('button', { name: '刷新', exact: true }).click();
   await expect(page.locator('#main #storage-location')).toHaveText(serverOptions.storage.identity);
@@ -235,7 +239,7 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await invoke('pause_task',{...p,taskId:followup.taskIds[0],requestId:requestId()});
   await server.close();server=await startServer(serverOptions);await page.goto(server.url);
   await page.getByRole('button',{name:'连接已有目录',exact:true}).waitFor();
-  if(native)await page.waitForFunction(async()=>document.modelContext&&(await document.modelContext.getTools()).length===96);
+  if(native)await page.waitForFunction(async()=>document.modelContext&&(await document.modelContext.getTools()).length===5);
   await invoke('connect_library',{create:false,requestId:requestId()});
   assert.ok((await invoke('list_projects',{})).items.some(item=>item.projectId===p.projectId));
   assert.ok((await invoke('get_recovery',p)).tasks.some(task=>task.taskId===followup.taskIds[0]&&task.status==='paused'));

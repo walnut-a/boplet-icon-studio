@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ajv } from '../src/contracts/schema.js';
-import { CONTRACT_VERSION, FORMAT_VERSION, documentSchemas } from '../src/contracts/models.js';
+import { CONTRACT_VERSION, FORMAT_VERSION, SCHEMA_REVISION, documentSchemas } from '../src/contracts/models.js';
 import { describeOperations, operationCatalog } from '../src/contracts/operations.js';
 
 export async function buildContracts(outputDirectory) {
@@ -15,7 +15,7 @@ export async function buildContracts(outputDirectory) {
       else ajv.compile(schema);
     }
   }
-  const bundle = { contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, stage: 'skill_candidate', productionReady: false,
+  const bundle = { contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, schemaRevision: SCHEMA_REVISION, stage: 'skill_candidate', productionReady: false,
     documents: documentSchemas, operations: describeOperations() };
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(join(outputDirectory, 'contracts.json'), `${JSON.stringify(bundle, null, 2)}\n`, 'utf8');

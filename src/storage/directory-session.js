@@ -7,6 +7,7 @@ export class DirectorySession {
   #handle = null;
   storage = null;
   constructor({ memory = directoryMemory } = {}) { this.#memory = memory; }
+  get authorizedHandle() { return this.storage ? this.#handle : null; }
   async restore() {
     const handle = await this.#memory.load();
     this.#handle = handle;

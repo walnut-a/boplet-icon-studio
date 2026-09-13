@@ -1,0 +1,29 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, appendFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { prepareRelease, readRelease } from '../../scripts/release-skill.js';
+
+test('同一候选包含可校验的 GitHub 下载清单，重复运行不覆盖，损坏包被拒绝', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'boplet-release-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, 'candidate');
+  const report = await prepareRelease(directory, { tag: 'v0.1.0-dev.2' });
+  const manifest = await readRelease(directory);
+  assert.equal(report.published, false);
+  assert.equal(manifest.version, '0.1.0-dev.2');
+  assert.match(manifest.url, /^https:\/\/github.com\/walnut-a\/icon-studio\/releases\/download\/v0.1.0-dev.2\//);
+  const bytes = await readFile(join(directory, manifest.filename));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), manifest.sha256);
+  const web = join(root, 'web');
+  execFileSync(process.execPath, ['scripts/release-web.js', '--skill-release', directory, '--output', web]);
+  assert.deepEqual(JSON.parse(await readFile(join(web, 'downloads/release.json'), 'utf8')), manifest);
+  assert.equal(await readFile(join(web, 'skill/SKILL.md'), 'utf8'), await readFile(join(directory, 'skill/SKILL.md'), 'utf8'));
+  await assert.rejects(prepareRelease(directory, { tag: 'v0.1.0-dev.2' }), /非空/);
+  await assert.rejects(prepareRelease(join(root, 'wrong-tag'), { tag: 'v9.0.0' }), /版本/);
+  await appendFile(join(directory, manifest.filename), 'tamper');
+  await assert.rejects(readRelease(directory), /校验/);
+});

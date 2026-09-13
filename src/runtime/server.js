@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createStudio } from '../core/studio.js';
+import { CONTRACT_VERSION, FORMAT_VERSION, SCHEMA_REVISION } from '../contracts/models.js';
 
 const media = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 export async function startServer({ storage, sources, skill, appDirectory, buildId = null, updateSource = null, updateCache = null, port = 0, requireUI = false } = {}) {
@@ -18,7 +19,8 @@ export async function startServer({ storage, sources, skill, appDirectory, build
     if (request.headers.host !== host || (request.headers.origin && request.headers.origin !== `http://${host}`) || request.headers['sec-fetch-site'] === 'cross-site') return send(403, { error: 'Origin/Host rejected' });
     const url = new URL(request.url, `http://${host}`);
     try {
-      if (request.method === 'GET' && url.pathname === '/health') return send(200, { product: 'icon-studio', version: skill?.version ?? null, buildId, ready: true });
+      if (request.method === 'GET' && url.pathname === '/health') return send(200, { product: 'icon-studio', version: skill?.version ?? null, buildId,
+        contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, schemaRevision: SCHEMA_REVISION, ready: true });
       if (request.method === 'POST' && url.pathname === '/bootstrap') {
         if (request.headers.origin !== `http://${host}`) return send(403, { error: 'Same-origin page required' });
         // Only the bound local container receives this session. Tokens never enter URLs.
@@ -26,7 +28,7 @@ export async function startServer({ storage, sources, skill, appDirectory, build
         let session = initial;
         if (chosen) { const found = [...sessions].find(([, s]) => s.sessionId === chosen); if (!found) return send(404, { error: 'Session not found' }); session = { token: found[0], studio: found[1] }; }
         session.studio.attachUI();
-        return send(200, { token: session.token });
+        return send(200, { token: session.token, version: skill?.version ?? null, buildId, contractVersion: CONTRACT_VERSION, formatVersion: FORMAT_VERSION, schemaRevision: SCHEMA_REVISION });
       }
       if (request.method === 'POST' && ['/operation', '/sessions'].includes(url.pathname)) {
         const token = request.headers.authorization?.replace(/^Bearer /, ''); const studio = sessions.get(token);
