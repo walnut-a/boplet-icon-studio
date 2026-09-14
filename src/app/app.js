@@ -157,6 +157,8 @@ async function render(force = false) {
       const actions=document.createElement('div');actions.className='heading-actions';
       actions.innerHTML=button('复制给 Agent','copy-agent','id="copy-agent" aria-live="polite"');
       actions.append(main.querySelector('[data-action="export-scheme"]'));main.querySelector('.heading').append(actions);
+      // Commit the final content rail before thumbnail requests yield to paint.
+      wrapPage(next.view);
       await Promise.all(data.items.map(async ({ icon, variants }) => { const slot = main.querySelector(`[data-thumb="${icon.iconId}"]`); if (!variants[0]) return; try { const preview = await run('preview_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: icon.iconId, variantId: variants[0].variantId }); if (slot?.isConnected) slot.innerHTML = preview.svg; } catch { if (slot) slot.textContent = t('尚未绘制'); } }));
     } else {
       main.innerHTML = `${button('返回图标列表', 'icons', 'class="quiet back"')}<header class="detail-heading"><div class="title"><h1>${esc(data.icon.name)}</h1><small>${esc(data.icon.concept)}</small></div><div class="preview-switch">${button('图标结构', 'structure', `aria-pressed="${next.view === 'structure'}" data-variant="${a.variantId ?? data.matrix.variants[0]?.variantId}"`)}${button('应用场景', 'scenes', `aria-pressed="${next.view === 'scenes'}"`)}</div></header>`;
@@ -179,7 +181,7 @@ async function render(force = false) {
       }
     }
     if(next.view==='structure')inspector.querySelector('section')?.insertAdjacentHTML('beforeend',button('复制给 Agent','copy-agent','id="copy-agent" aria-live="polite"'));
-    wrapPage(next.view);
+    if (next.view !== 'icons') wrapPage(next.view);
     if (focused && document.getElementById(focused)) { const el = document.getElementById(focused); el.focus(); if (typeof selectionStart === 'number' && el.setSelectionRange) el.setSelectionRange(selectionStart, selectionStart); }
   } catch (e) { error(e.message); } finally { rendering = false; }
 }

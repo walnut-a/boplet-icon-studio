@@ -1,7 +1,8 @@
 import { StudioError } from '../contracts/errors.js';
 import { FORMAT_VERSION, validateDocument } from '../contracts/models.js';
+import { projectDirectory, projectPrefix } from '../storage/library-layout.js';
 
-const root = projectId => `projects/${projectId}`;
+const root = (runtime, projectId) => projectDirectory(runtime.library, projectId);
 
 export async function connectLibrary(runtime, args) {
   if (!runtime.storage) throw new StudioError('STORAGE_UNAVAILABLE', '尚未提供已授权的存储适配器。');
@@ -11,7 +12,7 @@ export async function connectLibrary(runtime, args) {
     if (error.code !== 'TARGET_NOT_FOUND') throw error;
     if (!args.create) throw error;
     if ((await runtime.storage.list('')).length) throw new StudioError('SCHEMA_UNSUPPORTED', '目录已有未知内容；请选择空目录，不转换或覆盖。');
-    library = { ...runtime.header(), libraryId: runtime.id('lib') };
+    library = { ...runtime.header(), libraryId: runtime.id('lib'), projectLayout: 'direct' };
     await runtime.writeDocument('library', 'library.json', library);
   }
   runtime.library = library;
@@ -19,7 +20,7 @@ export async function connectLibrary(runtime, args) {
 }
 
 export async function readProject(runtime, projectId) {
-  const project = await runtime.readDocument('project', `${root(projectId)}/project.json`);
+  const project = await runtime.readDocument('project', `${root(runtime, projectId)}/project.json`);
   if (project.projectId !== projectId || project.libraryId !== runtime.library.libraryId) throw new StudioError('VALIDATION_FAILED', '项目身份与存储位置不一致。');
   // Additive v3 fields: defaults are read-only; old preference is not confirmation.
   return { primarySchemeId: null, primarySchemeConfirmedAt: null, primarySchemeEvidence: null, ...project };
@@ -27,8 +28,10 @@ export async function readProject(runtime, projectId) {
 
 export async function listProjects(runtime, args) {
   const items = [];
-  for (const path of await runtime.storage.list('projects')) {
-    const match = /^projects\/(p-[A-Za-z0-9_-]+)\/project\.json$/.exec(path);
+  const prefix = projectPrefix(runtime.library);
+  for (const path of await runtime.storage.list(prefix)) {
+    const relative = prefix ? path.slice(prefix.length + 1) : path;
+    const match = /^(p-[A-Za-z0-9_-]+)\/project\.json$/.exec(relative);
     if (!match) continue;
     const project = await readProject(runtime, match[1]);
     if (args.status && project.status !== args.status) continue;
@@ -48,16 +51,16 @@ export async function createProject(runtime, args) {
     purpose: args.purpose ?? null, status: 'active', currentBriefRevision: brief.revision, primarySchemeId: null,
     primarySchemeConfirmedAt: null, primarySchemeEvidence: null };
   // Publish project.json last. No multi-file transaction or foreign-project cleanup.
-  await runtime.writeDocument('brief', `${root(projectId)}/design-brief.json`, brief);
-  await runtime.writeDocument('vocabulary', `${root(projectId)}/vocabulary.json`, vocabulary);
-  await runtime.writeDocument('project', `${root(projectId)}/project.json`, project);
+  await runtime.writeDocument('brief', `${root(runtime, projectId)}/design-brief.json`, brief);
+  await runtime.writeDocument('vocabulary', `${root(runtime, projectId)}/vocabulary.json`, vocabulary);
+  await runtime.writeDocument('project', `${root(runtime, projectId)}/project.json`, project);
   return { project };
 }
 
 export async function updateProject(runtime, args) {
   const project = await readProject(runtime, args.projectId);
   const updated = { ...project, ...args.changes, revision: runtime.id('r'), updatedAt: runtime.time() };
-  await runtime.writeDocument('project', `${root(args.projectId)}/project.json`, updated);
+  await runtime.writeDocument('project', `${root(runtime, args.projectId)}/project.json`, updated);
   return { project: updated };
 }
 
@@ -67,8 +70,8 @@ export async function setProjectStatus(runtime, args, status) {
 
 export async function getBrief(runtime, args) {
   const project = await readProject(runtime, args.projectId);
-  let brief = await runtime.readDocument('brief', `${root(args.projectId)}/design-brief.json`);
-  if (brief.revision !== project.currentBriefRevision) brief = await runtime.readDocument('brief', `${root(args.projectId)}/history/brief/${project.currentBriefRevision}.json`);
+  let brief = await runtime.readDocument('brief', `${root(runtime, args.projectId)}/design-brief.json`);
+  if (brief.revision !== project.currentBriefRevision) brief = await runtime.readDocument('brief', `${root(runtime, args.projectId)}/history/brief/${project.currentBriefRevision}.json`);
   if (brief.projectId !== args.projectId || brief.revision !== project.currentBriefRevision) throw new StudioError('VALIDATION_FAILED', '需求文档与项目引用不一致；需读取恢复状态。');
   return { brief };
 }
@@ -76,11 +79,12 @@ export async function getBrief(runtime, args) {
 export async function listSchemes(runtime, args) {
   await readProject(runtime, args.projectId);
   const items = [];
-  for (const path of await runtime.storage.list(`${root(args.projectId)}/schemes`)) {
-    const match = /^projects\/([^/]+)\/schemes\/([^/]+)\/scheme\.json$/.exec(path);
+  for (const path of await runtime.storage.list(`${root(runtime, args.projectId)}/schemes`)) {
+    const relative = path.slice(root(runtime, args.projectId).length + 1);
+    const match = /^schemes\/([^/]+)\/scheme\.json$/.exec(relative);
     if (!match) continue;
     const scheme = await runtime.readDocument('scheme', path);
-    if (scheme.projectId !== args.projectId || scheme.schemeId !== match[2]) throw new StudioError('VALIDATION_FAILED', '方案身份与位置不一致。');
+    if (scheme.projectId !== args.projectId || scheme.schemeId !== match[1]) throw new StudioError('VALIDATION_FAILED', '方案身份与位置不一致。');
     items.push(scheme);
   }
   items.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }) || a.createdAt.localeCompare(b.createdAt) || a.schemeId.localeCompare(b.schemeId));
@@ -91,7 +95,7 @@ export async function listSchemes(runtime, args) {
 
 export async function primaryScheme(runtime, project) {
   if (!project.primarySchemeId) return null;
-  const scheme = await runtime.readDocument('scheme', `${root(project.projectId)}/schemes/${project.primarySchemeId}/scheme.json`);
+  const scheme = await runtime.readDocument('scheme', `${root(runtime, project.projectId)}/schemes/${project.primarySchemeId}/scheme.json`);
   if (scheme.projectId !== project.projectId || scheme.schemeId !== project.primarySchemeId) throw new StudioError('VALIDATION_FAILED', '主方案身份不符。');
   return { schemeId: scheme.schemeId, name: scheme.name, confirmedAt: project.primarySchemeConfirmedAt };
 }

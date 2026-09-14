@@ -45,3 +45,18 @@ test('空目录、项目目录、旧格式与损坏数据分开反馈，不写�
   assert.equal(result.libraries[0].projects.length, 0);
   assert.ok(result.issues.some(i => i.kind === 'invalid'));
 });
+
+test('网页识别原 v3 projects 布局，保留数据与库身份', async () => {
+  const files = await fixture();
+  const library = JSON.parse(files['library.json']);
+  delete library.projectLayout;
+  const existing = Object.fromEntries(Object.entries(files).map(([path, value]) =>
+    path === 'library.json' ? [path, JSON.stringify(library)] : ['projects/' + path, value]));
+  const snapshot = JSON.stringify(existing);
+  const result = await discoverDirectory(folder(existing));
+  assert.equal(result.kind, 'library');
+  assert.equal(result.libraries[0].libraryId, library.libraryId);
+  assert.equal(result.libraries[0].projects.length, 1);
+  assert.deepEqual(result.issues, []);
+  assert.equal(JSON.stringify(existing), snapshot);
+});

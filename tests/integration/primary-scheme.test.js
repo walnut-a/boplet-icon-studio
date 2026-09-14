@@ -60,7 +60,7 @@ test('交接指令只读、范围准确、无令牌端口，非主方案也可�
 
 test('主方案重开可读，失败保存不假报确认；不将旧偏好数据迁移为主线',async()=>{
  const {studio,storage,p,s}=await produce();
- const path=`projects/${p.projectId}/project.json`;
+ const path=`${p.projectId}/project.json`;
  const before=await storage.readJson(path),write=storage.writeJson.bind(storage);
  storage.writeJson=async()=>{throw Error('simulated disk failure');};
  assert.equal((await studio.execute('set_primary_scheme',{...s,evidenceReference:'合成确认',requestId:req()})).ok,false);
@@ -81,7 +81,7 @@ test('主方案重开可读，失败保存不假报确认；不将旧偏好数�
  assert.equal((await call(receiver,'open_project',{...p,requestId:req()})).primaryScheme,null);
  assert.equal((await call(receiver,'get_agent_handoff',{...s,scope:'scheme'})).items[0].contentHash,transfer.items[0].contentHash);
  assert.deepEqual(await storage.readJson(path),legacy);
- const matrixPath=`projects/${p.projectId}/schemes/${s.schemeId}/matrix/${iconId}.json`;
+ const matrixPath=`${p.projectId}/schemes/${s.schemeId}/matrix/${iconId}.json`;
  const matrixBefore=await storage.readJson(matrixPath);
  await call(receiver,'set_primary_scheme',{...s,evidenceReference:'用户明确选择 A',requestId:req()});
  assert.equal((await call(receiver,'get_project',p)).primaryScheme.schemeId,s.schemeId);

@@ -31,7 +31,7 @@ export const resultItem = object({ iconId: identity.iconId, variantId: identity.
 export async function schemeTargets(r, a) {
   await readScheme(r, a);
   const targets = [];
-  for (const path of await r.storage.list(`${schemePath(a)}/matrix`)) {
+  for (const path of await r.storage.list(`${schemePath(a, r)}/matrix`)) {
     const match = /\/(i-[^/]+)\.json$/.exec(path); if (!match || (a.iconId && a.iconId !== match[1])) continue;
     const matrix = await readMatrix(r, { ...a, iconId: match[1] });
     for (const variant of matrix.variants) if (variant.status === 'active' && (!a.variantId || a.variantId === variant.variantId)) targets.push({ projectId: a.projectId, schemeId: a.schemeId, iconId: matrix.iconId, variantId: variant.variantId });
@@ -47,9 +47,9 @@ export function registerProductionOperations(define) {
     for (const target of a.targets) {
       const task = { ...r.header(), projectId: a.projectId, taskId: r.id('task'), batchId: batch.batchId, target: { projectId: a.projectId, schemeId: a.schemeId, ...target }, status: 'planned', briefRevision: brief.revision, ruleRevision: rules.revision,
         progress: { completed: 0, total: 2, source: 'core' }, checkpoint: null, operationIds: [], reason: null };
-      await r.writeDocument('task', `${projectPath(a)}/tasks/${task.taskId}.json`, task); batch.taskIds.push(task.taskId);
+      await r.writeDocument('task', `${projectPath(a, r)}/tasks/${task.taskId}.json`, task); batch.taskIds.push(task.taskId);
     }
-    await r.writeDocument('batch', `${projectPath(a)}/batches/${batch.batchId}.json`, batch); return { batch };
+    await r.writeDocument('batch', `${projectPath(a, r)}/batches/${batch.batchId}.json`, batch); return { batch };
   } });
   define('get_batch', { description: '读取持久批次与登记版本。', input: object({ ...p, batchId: id('batch') }), data: object({ batch: doc('batch') }), handler: async (r, a) => ({ batch: await readBatch(r, a) }) });
   for (const name of ['start_batch', 'update_batch']) define(name, { description: '启动或暂停/取消批次中的未完成任务；保留已成功任务。', input: input({ ...p, batchId: id('batch'), ...(name === 'update_batch' ? { status: enumeration('paused', 'cancelled', 'running') } : {}) }), data: object({ batch: doc('batch') }), mutates: true, persists: true, handler: async (r, a) => {
@@ -59,20 +59,20 @@ export function registerProductionOperations(define) {
     for (const taskId of batch.taskIds) {
       const task = await readTask(r, { ...a, taskId });
       if (task.status === 'succeeded' || task.status === 'cancelled') continue;
-      task.status = batch.status; await r.writeDocument('task', `${projectPath(a)}/tasks/${taskId}.json`, touch(r, task));
+      task.status = batch.status; await r.writeDocument('task', `${projectPath(a, r)}/tasks/${taskId}.json`, touch(r, task));
     }
-    await r.writeDocument('batch', `${projectPath(a)}/batches/${batch.batchId}.json`, batch); return { batch };
+    await r.writeDocument('batch', `${projectPath(a, r)}/batches/${batch.batchId}.json`, batch); return { batch };
   } });
   define('get_task', { description: '读取持久任务、检查点和真实产物进度。', input: object({ ...p, taskId: id('task') }), data: taskData, handler: async (r, a) => ({ task: await readTask(r, a) }) });
   define('list_tasks', { description: '枚举项目任务，不把 Agent 报告算作编译完成。', input: object({ ...p, ...pageFields }, ['projectId']), data: object({ tasks: array(doc('task')), total: { type: 'integer' } }), handler: async (r, a) => {
-    const tasks = []; for (const path of await r.storage.list(`${projectPath(a)}/tasks`)) { const match = /\/(task-[^/]+)\.json$/.exec(path); if (match) tasks.push(await readTask(r, { ...a, taskId: match[1] })); }
+    const tasks = []; for (const path of await r.storage.list(`${projectPath(a, r)}/tasks`)) { const match = /\/(task-[^/]+)\.json$/.exec(path); if (match) tasks.push(await readTask(r, { ...a, taskId: match[1] })); }
     return { tasks: tasks.slice(a.offset ?? 0, (a.offset ?? 0) + (a.limit ?? 48)), total: tasks.length };
   } });
   for (const name of ['report_task_progress', 'pause_task', 'resume_task', 'cancel_task']) define(name, { description: '更新指定任务执行状态；只有核心编译可以写 succeeded。', input: input({ ...p, taskId: id('task'), ...(name === 'report_task_progress' ? { reason: text, status: enumeration('running', 'waiting_user', 'blocked', 'failed') } : {}) }), data: taskData, mutates: true, persists: true, handler: async (r, a) => {
     const task = touch(r, await readTask(r, a));
     if (['succeeded', 'cancelled'].includes(task.status)) throw new StudioError('VALIDATION_FAILED', '终态任务保持原结果；修改请登记新任务。');
     task.status = a.status ?? ({ pause_task: 'paused', resume_task: 'running', cancel_task: 'cancelled' })[name]; task.reason = a.reason ?? null;
-    await r.writeDocument('task', `${projectPath(a)}/tasks/${task.taskId}.json`, task); return { task };
+    await r.writeDocument('task', `${projectPath(a, r)}/tasks/${task.taskId}.json`, task); return { task };
   } });
   define('apply_operations', { description: '按登记任务原子替换一个图标矩阵；严格显式几何、节点、组合及组件操作。', input: { ...input({ ...v, taskId: id('task'), operations: array(geometryOperations, { minItems: 1, maxItems: 1000 }) }), $defs: { layer: layerSchema } }, data: object({ matrix: doc('matrix') }), mutates: true, persists: true, handler: applyOperations });
   define('get_icon', { description: '读取当前持久矩阵与语义，不隐式编译。', input: object(i), data: object({ matrix: doc('matrix'), icon: vocabularyItemSchema }), handler: async (r, a) => ({ matrix: await readMatrix(r, a), icon: requireValue((await readVocabulary(r, a)).icons.find(i => i.iconId === a.iconId)) }) });
@@ -104,11 +104,11 @@ export function registerProductionOperations(define) {
   define('get_primitive', { description: '读取明确组件显式几何。', input: object({ ...s, primitiveId: id('prim') }), data: { ...object({ layers: array(layerRef) }), $defs: { layer: layerSchema } }, handler: async (r, a) => ({ layers: requireValue((await readPrimitives(r, a))[a.primitiveId]) }) });
   define('query_icons', { description: '按语义名称、concept、tags 过滤后分页；只读取当前页矩阵，不编译整库。', input: object({ ...s, ...pageFields, search: { type: 'string', maxLength: 200 }, tag: shortText }, ['projectId', 'schemeId']), data: object({ items: array(object({ icon: vocabularyItemSchema, variants: array(object({ variantId: identity.variantId, size: number, style: text, weight: text })) })), total: { type: 'integer' }, tags: array(text) }), handler: async (r, a) => {
     await readScheme(r, a); const vocabulary = (await readVocabulary(r, a)).icons.filter(i => i.status === 'active');
-    const existing = new Set((await r.storage.list(`${schemePath(a)}/matrix`)).map(path => /\/(i-[^/]+)\.json$/.exec(path)?.[1]).filter(Boolean));
+    const existing = new Set((await r.storage.list(`${schemePath(a, r)}/matrix`)).map(path => /\/(i-[^/]+)\.json$/.exec(path)?.[1]).filter(Boolean));
     const active = vocabulary.filter(i => existing.has(i.iconId));
     const matches = active.filter(i => (!a.tag || i.tags.includes(a.tag)) && (!a.search || `${i.name} ${i.concept} ${i.tags.join(' ')}`.toLocaleLowerCase().includes(a.search.toLocaleLowerCase())));
     const items = []; for (const icon of matches.slice(a.offset ?? 0, (a.offset ?? 0) + (a.limit ?? 48))) {
-      const matrix = await r.readDocument('matrix', `${schemePath(a)}/matrix/${icon.iconId}.json`);
+      const matrix = await r.readDocument('matrix', `${schemePath(a, r)}/matrix/${icon.iconId}.json`);
       items.push({ icon, variants: matrix.variants.filter(v => v.status === 'active').map(({ variantId, size, style, weight }) => ({ variantId, size, style, weight })) });
     }
     return { items, total: matches.length, tags: [...new Set(active.flatMap(i => i.tags))].sort() };

@@ -1,6 +1,10 @@
 # 数据与维护合同
 
-`library.json` 识别一个库；`projects/p-…/project.json` 识别项目。项目下 `design-brief.json`、`vocabulary.json`、`schemes/s-…/`，方案下 `scheme.json`、`rules.json`、`matrix/i-….json`、`primitives/`、`usages/`、`builds/`；项目还有 tasks/batches/feedback/reviews/history/deliveries。源数据不进入 Skill 或 HTML 包。
+`library.json` 识别一个库；`p-…/project.json` 识别项目。项目下 `design-brief.json`、`vocabulary.json`、`schemes/s-…/`，方案下 `scheme.json`、`rules.json`、`matrix/i-….json`、`primitives/`、`usages/`、`builds/`；项目还有 tasks/batches/feedback/reviews/history/deliveries。源数据不进入 Skill 或 HTML 包。
+
+一个库可以保存多个产品项目。`create_project` 创建的 `p-…/` 是正常项目隔离，不影响库内切换；按产品另建包含 `library.json` 的目录则是另建库，本地容器不会自动汇总这些库。新设计默认复用库，目录选择遵循 [运行与恢复](runtime.md)。
+
+从 `0.1.0-dev.4` / schema revision 3 起，新库的 `library.json` 带 `projectLayout:"direct"`，项目直接位于库根目录。缺少该字段的已有 v3 库仍使用 `projects/p-…/`，读取不补写、不迁移。项目文件格式和 ID 不变；旧安装版不认识新布局，不能用它打开新库，也不能仅删除布局标记来尝试兼容。
 
 所有身份都来自工具回执：lib-/p-/s-/i-/v-。名称相同不代表同一对象。矩阵存同一图标的独立变体，不在多个方案之间共享可写矩阵。复制后的方案独立存在，由 Agent 检查并保存规则，无需用户二次确认。
 

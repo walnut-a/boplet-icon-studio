@@ -32,7 +32,7 @@ test('静态 Worker 使用共享合同且不绕过 Skill 门槛', async t => {
       await call({ type: 'bind_directory', handle: root });
       const library = await call({ type: 'execute', name: 'connect_library', input: { requestId: crypto.randomUUID(), create: true } });
       const project = await call({ type: 'execute', name: 'create_project', input: { requestId: crypto.randomUUID(), name: '静态 Worker 合成项目' } });
-      const folder = await (await root.getDirectoryHandle('projects')).getDirectoryHandle(project.data.project.projectId);
+      const folder = await root.getDirectoryHandle(project.data.project.projectId);
       const saved = JSON.parse(await (await (await folder.getFileHandle('project.json')).getFile()).text());
       return { session, workflow, denied, ready, library, project, saved };
     } finally { worker.terminate(); }

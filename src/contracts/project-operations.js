@@ -22,11 +22,11 @@ export function registerProjectOperations(define) {
     handler: async (r, a) => {
       const old = (await getBrief(r, a)).brief;
       const brief = { ...touch(r, old), content: a.content, status: 'draft', confirmation: null, previousConfirmedRevision: old.status === 'confirmed' ? old.revision : old.previousConfirmedRevision };
-      await r.writeDocument('brief', `${projectPath(a)}/history/brief/${old.revision}.json`, old);
-      await r.writeDocument('brief', `${projectPath(a)}/history/brief/${brief.revision}.json`, brief);
-      await r.writeDocument('brief', `${projectPath(a)}/design-brief.json`, brief);
+      await r.writeDocument('brief', `${projectPath(a, r)}/history/brief/${old.revision}.json`, old);
+      await r.writeDocument('brief', `${projectPath(a, r)}/history/brief/${brief.revision}.json`, brief);
+      await r.writeDocument('brief', `${projectPath(a, r)}/design-brief.json`, brief);
       const project = touch(r, await readProject(r, a.projectId)); project.currentBriefRevision = brief.revision;
-      await r.writeDocument('project', `${projectPath(a)}/project.json`, project);
+      await r.writeDocument('project', `${projectPath(a, r)}/project.json`, project);
       return { brief };
     } });
   define('validate_brief', { description: '检查需求缺项；不代替用户确认。', input: object(p), data: object({ valid: bool, missing: array(text) }), handler: async (r, a) => {
@@ -45,7 +45,7 @@ export function registerProjectOperations(define) {
       if (prepared.projectId !== a.projectId || prepared.schemeId !== a.schemeId || prepared.revision !== document.revision || prepared.contentHash !== await hash(document.content)) throw new StudioError('VALIDATION_FAILED', '内容已改变，不能沿用之前的确认。');
       const { confirmationId, revision: confirmedRevision, contentHash, summary } = prepared;
       document.status = 'confirmed'; document.confirmation = { confirmationId, revision: confirmedRevision, contentHash, summary, confirmedAt: r.time(), evidenceKind: 'host_attestation', evidenceReference: a.evidenceReference };
-      await r.writeDocument('brief', `${projectPath(a)}/design-brief.json`, document);
+      await r.writeDocument('brief', `${projectPath(a, r)}/design-brief.json`, document);
       return { brief: document };
     } });
   define('get_scheme', { description: '读取明确方案。', input: object(s), data: object({ scheme: doc('scheme') }), handler: async (r, a) => ({ scheme: await readScheme(r, a) }) });
@@ -55,22 +55,22 @@ export function registerProjectOperations(define) {
       const scheme = { ...r.header(), projectId: a.projectId, schemeId: r.id('s'), name: a.name, description: a.description ?? null, status: 'draft', ruleRevision: null, sourceSchemeId: a.sourceSchemeId ?? null };
       if (a.sourceSchemeId) {
         const source = { ...a, schemeId: a.sourceSchemeId }; await readScheme(r, source);
-        for (const path of await r.storage.list(schemePath(source))) {
-          const suffix = path.slice(schemePath(source).length + 1);
+        for (const path of await r.storage.list(schemePath(source, r))) {
+          const suffix = path.slice(schemePath(source, r).length + 1);
           if (suffix !== 'rules.json' && !/^matrix\/i-[^/]+\.json$/.test(suffix) && !/^primitives\/prim-[^/]+\.json$/.test(suffix)) continue;
           const value = touch(r, await r.storage.readJson(path)); value.schemeId = scheme.schemeId;
           if (suffix === 'rules.json') value.status = 'draft';
           if (value.variants) value.variants.forEach(v => { v.productionStatus = v.layers.length ? 'draft' : 'planned'; v.reviewStatus = 'unreviewed'; v.compiledRevision = null; });
-          await r.storage.writeJson(`${schemePath(scheme)}/${suffix}`, value);
+          await r.storage.writeJson(`${schemePath(scheme, r)}/${suffix}`, value);
         }
       }
-      await r.writeDocument('scheme', `${schemePath(scheme)}/scheme.json`, scheme); return { scheme };
+      await r.writeDocument('scheme', `${schemePath(scheme, r)}/scheme.json`, scheme); return { scheme };
     } });
   for (const name of ['update_scheme', 'archive_scheme', 'restore_scheme']) define(name, {
     description: '更新或归档/恢复方案，不删除历史。', input: input({ ...s, ...(name === 'update_scheme' ? { changes: object({ name: shortText, description: nullable(text) }, [], { minProperties: 1 }) } : {}) }),
     data: object({ scheme: doc('scheme') }), mutates: true, persists: true, handler: async (r, a) => {
       const scheme = { ...touch(r, await readScheme(r, a)), ...(a.changes ?? { status: name === 'archive_scheme' ? 'archived' : 'draft' }) };
-      await r.writeDocument('scheme', `${schemePath(a)}/scheme.json`, scheme); return { scheme };
+      await r.writeDocument('scheme', `${schemePath(a, r)}/scheme.json`, scheme); return { scheme };
     } });
   define('set_primary_scheme', { description: '用户明确选择或取消主方案；倾向、查看和编辑不构成确认。确认设计方向，不冻结图标、不删除其他方案。', input: input({ ...p, schemeId: nullable(identity.schemeId), evidenceReference: text }), data: object({ project: doc('project') }), mutates: true, persists: true, handler: async (r, a) => {
     if (!a.evidenceReference.trim()) throw new StudioError('VALIDATION_FAILED', '需要用户明确确认的原文引用。');
@@ -78,7 +78,7 @@ export function registerProjectOperations(define) {
     const project = touch(r, await readProject(r, a.projectId)); project.primarySchemeId = a.schemeId;
     project.primarySchemeConfirmedAt = a.schemeId ? r.time() : null;
     project.primarySchemeEvidence = a.schemeId ? a.evidenceReference : null;
-    await r.writeDocument('project', `${projectPath(a)}/project.json`, project); return { project };
+    await r.writeDocument('project', `${projectPath(a, r)}/project.json`, project); return { project };
   } });
   define('get_design_rules', { description: '读取 Agent 制定的方案规则及生产版本，不代表用户审核。', input: object(s), data: object({ rules: doc('rules') }), handler: async (r, a) => ({ rules: await readRules(r, a) }) });
   define('set_design_rules', { description: '需求确认后由 Agent 保存可用于生产的方案规则，无需用户再次确认；不自动改变已有几何。', input: input({ ...s, content: ruleContentSchema }), data: object({ rules: doc('rules') }), mutates: true, persists: true, handler: async (r, a) => {
@@ -86,8 +86,8 @@ export function registerProjectOperations(define) {
     if (scheme.status === 'archived' || (await readProject(r, a.projectId)).status === 'archived') throw new StudioError('VALIDATION_FAILED', '归档目标需要先恢复。');
     if (a.content.padding * 2 >= a.content.gridSize) throw new StudioError('VALIDATION_FAILED', '留白不能占满画布。');
     const rules = { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, content: a.content, status: 'ready' };
-    await r.writeDocument('rules', `${schemePath(a)}/rules.json`, rules);
-    await r.writeDocument('scheme', `${schemePath(a)}/scheme.json`, { ...touch(r, scheme), ruleRevision: rules.revision, status: 'active' });
+    await r.writeDocument('rules', `${schemePath(a, r)}/rules.json`, rules);
+    await r.writeDocument('scheme', `${schemePath(a, r)}/scheme.json`, { ...touch(r, scheme), ruleRevision: rules.revision, status: 'active' });
     return { rules };
   } });
   define('list_vocabulary', { description: '读取项目图标语义与同义标签。', input: object(p), data: object({ icons: array(vocabularyItemSchema) }), handler: async (r, a) => ({ icons: (await readVocabulary(r, a)).icons }) });
@@ -96,27 +96,27 @@ export function registerProjectOperations(define) {
     const icons = a.icons.map(icon => ({ ...icon, iconId: r.id('i'), status: 'active' }));
     const concepts = [...vocabulary.icons, ...icons].map(i => i.concept.trim().toLocaleLowerCase());
     if (new Set(concepts).size !== concepts.length) throw new StudioError('VALIDATION_FAILED', '同一语义已登记，请复用图标或更新同义标签。');
-    vocabulary.icons.push(...icons); await r.writeDocument('vocabulary', `${projectPath(a)}/vocabulary.json`, vocabulary); return { icons };
+    vocabulary.icons.push(...icons); await r.writeDocument('vocabulary', `${projectPath(a, r)}/vocabulary.json`, vocabulary); return { icons };
   } });
   for (const name of ['update_icon_metadata', 'retire_icon', 'restore_icon']) define(name, {
     description: '维护项目语义；退役保留实现与历史。', input: input({ ...p, iconId: identity.iconId, ...(name === 'update_icon_metadata' ? { metadata: semanticInput } : {}) }), data: object({ icon: vocabularyItemSchema }), mutates: true, persists: true, handler: async (r, a) => {
       const vocabulary = touch(r, await readVocabulary(r, a)); const icon = requireValue(vocabulary.icons.find(i => i.iconId === a.iconId));
       Object.assign(icon, a.metadata ?? { status: name === 'retire_icon' ? 'retired' : 'active' });
       if (vocabulary.icons.some(i => i.iconId !== icon.iconId && i.concept.trim().toLocaleLowerCase() === icon.concept.trim().toLocaleLowerCase())) throw new StudioError('VALIDATION_FAILED', '同一语义已登记。');
-      await r.writeDocument('vocabulary', `${projectPath(a)}/vocabulary.json`, vocabulary); return { icon };
+      await r.writeDocument('vocabulary', `${projectPath(a, r)}/vocabulary.json`, vocabulary); return { icon };
     } });
   define('list_variants', { description: '读取独立绘制的尺寸、样式与轻重，不把显示缩放登记成变体。', input: object(i), data: variantsData, handler: async (r, a) => ({ variants: (await readMatrix(r, a)).variants }) });
   define('register_variants', { description: '登记变体；尚未写几何时保持 planned。', input: input({ ...i, variants: array(object({ size: dimensions, style: enumeration('filled', 'outline'), weight: enumeration('light', 'regular', 'medium', 'bold') }), { minItems: 1, maxItems: 100 }) }), data: variantsData, mutates: true, persists: true,
     handler: async (r, a) => {
       await productionGate(r, a); requireValue((await readVocabulary(r, a)).icons.find(i => i.iconId === a.iconId && i.status === 'active'));
-      const matrix = touch(r, await readOptional(r, matrixPath(a), { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId, variants: [] }));
+      const matrix = touch(r, await readOptional(r, matrixPath(a, r), { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId, variants: [] }));
       const variants = a.variants.map(x => ({ ...x, variantId: r.id('v'), status: 'active', productionStatus: 'planned', reviewStatus: 'unreviewed', sourceRevision: null, compiledRevision: null, layers: [] }));
       const keys = [...matrix.variants, ...variants].map(v => `${v.size}/${v.style}/${v.weight}`);
       if (new Set(keys).size !== keys.length) throw new StudioError('VALIDATION_FAILED', '同一尺寸、样式和轻重已登记。');
-      matrix.variants.push(...variants); await r.writeDocument('matrix', matrixPath(a), matrix); return { variants };
+      matrix.variants.push(...variants); await r.writeDocument('matrix', matrixPath(a, r), matrix); return { variants };
     } });
   for (const name of ['retire_variant', 'restore_variant']) define(name, { description: '退役或恢复明确变体，不删除几何。', input: input(v), data: variantsData, mutates: true, persists: true, handler: async (r, a) => {
     const matrix = touch(r, await readMatrix(r, a)); requireValue(matrix.variants.find(v => v.variantId === a.variantId)).status = name === 'retire_variant' ? 'retired' : 'active';
-    await r.writeDocument('matrix', matrixPath(a), matrix); return { variants: matrix.variants };
+    await r.writeDocument('matrix', matrixPath(a, r), matrix); return { variants: matrix.variants };
   } });
 }

@@ -27,7 +27,7 @@ export function registerHandoffOperations(define) {
         for (const variant of variants) {
           const target={...sTarget(a),iconId:icon.iconId,variantId:variant.variantId};
           const {contentHash}=await variantContent(r,target);
-          items.push({...target,name:icon.name,size:variant.size,style:variant.style,weight:variant.weight,matrixPath:matrixPath(target),contentHash,productionStatus:variant.productionStatus});
+          items.push({...target,name:icon.name,size:variant.size,style:variant.style,weight:variant.weight,matrixPath:matrixPath(target, r),contentHash,productionStatus:variant.productionStatus});
         }
       }
       const location=r.storageStatus().location, target=Object.fromEntries(keys.map(k=>[k,a[k]]));

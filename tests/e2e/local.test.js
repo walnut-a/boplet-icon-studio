@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { startServer } from '../../src/runtime/server.js';
@@ -80,6 +80,15 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   await invoke('create_project', {requestId:requestId(), name:'另一个合成项目', purpose:'验证多项目网格'});
   await page.reload();
   await expect(page.locator('.project-row')).toHaveCount(2);
+  const diskEntries = await readdir(directory);
+  assert.equal(diskEntries.filter(name => name.startsWith('p-')).length, 2);
+  assert.equal(diskEntries.includes('projects'), false, '各项目直接保存到共用根目录');
+  const storageBeforeSwitch = await invoke('get_storage');
+  await page.getByRole('button', { name: /另一个合成项目/ }).click();
+  await expect(page.locator('#project-label')).toHaveText('另一个合成项目');
+  await page.locator('#library-back').click();
+  await expect(page.locator('.project-row')).toHaveCount(2);
+  assert.equal((await invoke('get_storage')).location, storageBeforeSwitch.location);
   const cards = await page.locator('.project-row').evaluateAll(items => items.map(item => {const r=item.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width};}));
   assert.equal(cards[0].y,cards[1].y,'宽屏项目卡片并排');
   assert.ok(cards[1].x>cards[0].x && cards.every(card=>card.width<=360));

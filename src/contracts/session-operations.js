@@ -46,10 +46,10 @@ export function registerSessionOperations(define) {
   define('scan_projects', { description: '仅扫描当前已授权库，不转换旧数据。', input: object({}), data: object({ projects: array({ $ref: 'urn:icon-studio:v3:project' }) }), handler: async r => ({ projects: (await listProjects(r, { limit: 100 })).items }) });
   define('record_source', { description: '保存宿主已读取的来源摘要，不把文本路径当授权。', input: input({ ...p, reference: text, summary: text, contentHash: { type: 'string', pattern: '^sha256-[a-f0-9]{64}$' } }), data: object({ source: sourceSchema }), mutates: true, persists: true, handler: async (r, a) => {
     await readProject(r, a.projectId); const source = { sourceId: r.id('source'), projectId: a.projectId, reference: a.reference, summary: a.summary, contentHash: a.contentHash, evidence: 'host_attestation', createdAt: r.time() };
-    await r.storage.writeJson(`${projectPath(a)}/sources/${source.sourceId}.json`, source); return { source };
+    await r.storage.writeJson(`${projectPath(a, r)}/sources/${source.sourceId}.json`, source); return { source };
   } });
   define('list_sources', { description: '列项目已登记来源及宿主单独授权的可读资料。', input: object(p), data: object({ sources: array(sourceSchema), authorizedFiles: array(text) }), handler: async (r, a) => {
-    await readProject(r, a.projectId); const sources = []; for (const path of await r.storage.list(`${projectPath(a)}/sources`)) sources.push(await r.storage.readJson(path));
+    await readProject(r, a.projectId); const sources = []; for (const path of await r.storage.list(`${projectPath(a, r)}/sources`)) sources.push(await r.storage.readJson(path));
     return { sources, authorizedFiles: r.sources ? (await r.sources.list('')).filter(allowedSource).slice(0, 100) : [] };
   } });
   define('read_source', { description: '限已单独授权的只读资料目录和非敏感文档；长度有界，不执行源码。', input: object({ relativePath: text, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20000 } }, ['relativePath']), data: object({ content: { type: 'string', maxLength: 20000 }, total: { type: 'integer' }, contentHash: text }), handler: async (r, a) => {
@@ -62,7 +62,7 @@ export function registerSessionOperations(define) {
     return { events: r.events.filter(e => e.cursor > (a.afterCursor ?? 0)), cursor: r.eventSequence, snapshotRequired: (a.afterCursor ?? 0) < (r.events[0]?.cursor ?? 1) - 1 };
   } });
   define('cancel_operation', { description: '取消本会话仍在运行的指定操作，不撤销已保存文件。', input: input({ operationId: id('op') }), data: object({ cancelled: bool }), mutates: true, requiresStorage: false, handler: async (r, a) => { const control = r.operationControls.get(a.operationId); if (!control) { requireValue(r.operationResults.get(a.operationId)); return { cancelled: false }; } control.abort(); return { cancelled: true }; } });
-  define('get_recovery', { description: '读取当前磁盘任务与会话状态，用于重开续跑，不重放已成功任务。', input: object(p), data: object({ tasks: array({ $ref: 'urn:icon-studio:v3:task' }), readAt: text }), handler: async (r, a) => { await readProject(r, a.projectId); const tasks = []; for (const path of await r.storage.list(`${projectPath(a)}/tasks`)) { const task = await r.readDocument('task', path); if (task.status !== 'succeeded') tasks.push(task); } return { tasks, readAt: r.time() }; } });
+  define('get_recovery', { description: '读取当前磁盘任务与会话状态，用于重开续跑，不重放已成功任务。', input: object(p), data: object({ tasks: array({ $ref: 'urn:icon-studio:v3:task' }), readAt: text }), handler: async (r, a) => { await readProject(r, a.projectId); const tasks = []; for (const path of await r.storage.list(`${projectPath(a, r)}/tasks`)) { const task = await r.readDocument('task', path); if (task.status !== 'succeeded') tasks.push(task); } return { tasks, readAt: r.time() }; } });
   define('check_skill_updates', { description: '检查包内固定官方源，不接受自定义更新地址、不覆盖安装。', input: object({ force: bool }, []), data: updateSchema, requiresSkill: false, requiresStorage: false, handler: (r, a) => r.updates.check(a.force) });
   define('get_skill_update_status', { description: '读取更新缓存；未知安装版本、未配置源和检查失败均不宣称最新版。', data: updateSchema, requiresSkill: false, requiresStorage: false, handler: r => r.updates.get() });
 }

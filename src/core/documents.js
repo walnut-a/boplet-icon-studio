@@ -1,9 +1,10 @@
 import { StudioError } from '../contracts/errors.js';
 import { getBrief, readProject } from './projects.js';
+import { projectDirectory } from '../storage/library-layout.js';
 
-export const projectPath = a => `projects/${a.projectId}`;
-export const schemePath = a => `${projectPath(a)}/schemes/${a.schemeId}`;
-export const matrixPath = a => `${schemePath(a)}/matrix/${a.iconId}.json`;
+export const projectPath = (a, r) => projectDirectory(r.library, a.projectId);
+export const schemePath = (a, r) => `${projectPath(a, r)}/schemes/${a.schemeId}`;
+export const matrixPath = (a, r) => `${schemePath(a, r)}/matrix/${a.iconId}.json`;
 export const touch = (r, doc) => ({ ...doc, revision: r.id('r'), updatedAt: r.time() });
 export const requireValue = (value, message = '目标不存在。') => { if (!value) throw new StudioError('TARGET_NOT_FOUND', message); return value; };
 export async function hash(value) {
@@ -13,26 +14,26 @@ export async function hash(value) {
 }
 export async function readScheme(r, a) {
   await readProject(r, a.projectId);
-  const scheme = await r.readDocument('scheme', `${schemePath(a)}/scheme.json`);
+  const scheme = await r.readDocument('scheme', `${schemePath(a, r)}/scheme.json`);
   if (scheme.projectId !== a.projectId || scheme.schemeId !== a.schemeId) throw new StudioError('VALIDATION_FAILED', '方案身份与位置不符。');
   return scheme;
 }
 export async function readVocabulary(r, a) {
   await readProject(r, a.projectId);
-  const vocabulary = await r.readDocument('vocabulary', `${projectPath(a)}/vocabulary.json`);
+  const vocabulary = await r.readDocument('vocabulary', `${projectPath(a, r)}/vocabulary.json`);
   if (vocabulary.projectId !== a.projectId) throw new StudioError('VALIDATION_FAILED', '语义项目身份不符。');
   return vocabulary;
 }
 export async function readMatrix(r, a) {
   await readScheme(r, a);
   requireValue((await readVocabulary(r, a)).icons.find(i => i.iconId === a.iconId));
-  const matrix = await r.readDocument('matrix', matrixPath(a));
+  const matrix = await r.readDocument('matrix', matrixPath(a, r));
   if (['projectId', 'schemeId', 'iconId'].some(k => matrix[k] !== a[k])) throw new StudioError('VALIDATION_FAILED', '矩阵身份与位置不符。');
   return matrix;
 }
 export async function readRules(r, a) {
   await readScheme(r, a);
-  const rules = await r.readDocument('rules', `${schemePath(a)}/rules.json`);
+  const rules = await r.readDocument('rules', `${schemePath(a, r)}/rules.json`);
   if (rules.projectId !== a.projectId || rules.schemeId !== a.schemeId) throw new StudioError('VALIDATION_FAILED', '规则身份与位置不符。');
   return rules;
 }

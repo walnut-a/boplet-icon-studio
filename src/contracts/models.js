@@ -4,7 +4,7 @@ import { StudioError } from './errors.js';
 export const FORMAT_VERSION = 3;
 export const CONTRACT_VERSION = 3;
 // Contract revisions distinguish additive strict-schema changes without migrating v3 data.
-export const SCHEMA_REVISION = 2;
+export const SCHEMA_REVISION = 3;
 export const identity = {
   libraryId: id('lib'), projectId: id('p'), schemeId: id('s'), iconId: id('i'), variantId: id('v'),
 };
@@ -67,7 +67,7 @@ export const variantSchema = object({
 });
 
 const definitions = {
-  library: object({ ...header, libraryId: identity.libraryId }),
+  library: object({ ...header, libraryId: identity.libraryId, projectLayout: enumeration('direct') }, [...Object.keys(header), 'libraryId']),
   project: object({ ...header, libraryId: identity.libraryId, projectId: identity.projectId, name: shortText,
     purpose: nullable(text), status: lifecycle, currentBriefRevision: revision, primarySchemeId: nullable(identity.schemeId),
     primarySchemeConfirmedAt: nullable(timestamp), primarySchemeEvidence: nullable(text), preferredSchemeId: nullable(identity.schemeId) },

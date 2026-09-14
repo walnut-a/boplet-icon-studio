@@ -1,5 +1,6 @@
 import { BrowserStorage } from './browser.js';
 import { validateDocument } from '../contracts/models.js';
+import { projectDirectory, projectPrefix } from './library-layout.js';
 
 const legacyMarkers = ['studio-collection.json', 'studio-schemes.json', 'icon-system.json', 'build-manifest.json'];
 const entriesOf = async handle => {
@@ -23,15 +24,16 @@ export async function discoverDirectory(handle) {
       const found = { path, handle: directory, libraryId: library.libraryId, projects: [] };
       result.libraries.push(found);
       let projects;
-      try { projects = await directory.getDirectoryHandle('projects'); }
+      const prefix = projectPrefix(library);
+      try { projects = prefix ? await directory.getDirectoryHandle(prefix) : directory; }
       catch (error) { if (error.name === 'NotFoundError') return; throw error; }
       for (const [id, entry] of await entriesOf(projects)) {
         if (entry.kind !== 'directory' || !/^p-[A-Za-z0-9_-]+$/.test(id)) continue;
         try {
-          const project = validateDocument('project', await storage.readJson(`projects/${id}/project.json`));
+          const project = validateDocument('project', await storage.readJson(`${projectDirectory(library, id)}/project.json`));
           if (project.projectId !== id || project.libraryId !== library.libraryId) throw Error('Identity mismatch');
           if (project.status === 'active') found.projects.push(project);
-        } catch { result.issues.push({ path: [path, 'projects', id].filter(Boolean).join('/'), kind: 'invalid' }); }
+        } catch { result.issues.push({ path: [path, projectDirectory(library, id)].filter(Boolean).join('/'), kind: 'invalid' }); }
       }
       found.projects.sort((a, b) => a.name.localeCompare(b.name));
     } catch {

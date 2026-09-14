@@ -5,19 +5,19 @@ import { hash, matrixPath, productionGate, projectPath, readMatrix, readOptional
 import { renderGeometry } from './geometry.js';
 
 export async function readTask(r, a) {
-  const task = await r.readDocument('task', `${projectPath(a)}/tasks/${a.taskId}.json`);
+  const task = await r.readDocument('task', `${projectPath(a, r)}/tasks/${a.taskId}.json`);
   if (task.projectId !== a.projectId || task.taskId !== a.taskId) throw new StudioError('VALIDATION_FAILED', '任务身份不符。');
   return task;
 }
 export async function readBatch(r, a) {
-  const batch = await r.readDocument('batch', `${projectPath(a)}/batches/${a.batchId}.json`);
+  const batch = await r.readDocument('batch', `${projectPath(a, r)}/batches/${a.batchId}.json`);
   if (batch.projectId !== a.projectId || batch.batchId !== a.batchId) throw new StudioError('VALIDATION_FAILED', '批次身份不符。');
   return batch;
 }
 export async function readPrimitives(r, a) {
   await readScheme(r, a);
   const primitives = {};
-  for (const path of await r.storage.list(`${schemePath(a)}/primitives`)) {
+  for (const path of await r.storage.list(`${schemePath(a, r)}/primitives`)) {
     if (!/\/prim-[^/]+\.json$/.test(path)) continue;
     const primitive = await r.storage.readJson(path);
     if (primitive.projectId !== a.projectId || primitive.schemeId !== a.schemeId) throw new StudioError('VALIDATION_FAILED', '组件身份不符。');
@@ -88,10 +88,10 @@ export function editLayers(r, layers, operations) {
 export async function saveMatrix(r, a, matrix) {
   validateDocument('matrix', matrix);
   const old = await readMatrix(r, a);
-  const base = `${projectPath(a)}/history/${a.schemeId}/${a.iconId}`;
+  const base = `${projectPath(a, r)}/history/${a.schemeId}/${a.iconId}`;
   await r.storage.writeJson(`${base}/${old.revision}.json`, old);
   await r.storage.writeJson(`${base}/${matrix.revision}.json`, matrix);
-  await r.writeDocument('matrix', matrixPath(a), matrix);
+  await r.writeDocument('matrix', matrixPath(a, r), matrix);
 }
 export async function applyOperations(r, a) {
   const task = await readTask(r, a);
@@ -122,18 +122,18 @@ export async function applyOperations(r, a) {
   validateDocument('matrix', matrix);
   validateGeometry(variant, rules, primitives);
   for (const op of primitiveWrites) renderGeometry({ size: variant.size, layers: op.layers }, { ...rules.content, primitives });
-  for (const op of primitiveWrites) await r.storage.writeJson(`${schemePath(a)}/primitives/${op.primitiveId}.json`, { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, primitiveId: op.primitiveId, name: op.name, layers: op.layers });
+  for (const op of primitiveWrites) await r.storage.writeJson(`${schemePath(a, r)}/primitives/${op.primitiveId}.json`, { ...r.header(), projectId: a.projectId, schemeId: a.schemeId, primitiveId: op.primitiveId, name: op.name, layers: op.layers });
   variant.productionStatus = 'draft'; variant.sourceRevision = a.sourceRevision ?? null; variant.reviewStatus = variant.reviewStatus === 'accepted' ? 'stale' : variant.reviewStatus;
   await saveMatrix(r, a, matrix);
   task.status = 'running'; task.checkpoint = r.id('checkpoint'); task.progress = { completed: 1, total: 2, source: 'core' };
-  await r.writeDocument('task', `${projectPath(a)}/tasks/${task.taskId}.json`, touch(r, task));
+  await r.writeDocument('task', `${projectPath(a, r)}/tasks/${task.taskId}.json`, touch(r, task));
   return { matrix };
 }
 export async function compileVariant(r, a) {
   const content = await variantContent(r, a); const { matrix, variant, rules, primitives, contentHash } = content;
   const { brief } = await productionGate(r, a);
   const tasks = [];
-  for (const path of await r.storage.list(`${projectPath(a)}/tasks`)) {
+  for (const path of await r.storage.list(`${projectPath(a, r)}/tasks`)) {
     if (!/\/task-[^/]+\.json$/.test(path)) continue;
     const task = await r.readDocument('task', path);
     if (Object.keys(task.target).every(k => task.target[k] === a[k]) && ['running', 'succeeded'].includes(task.status) && task.ruleRevision === rules.revision && task.briefRevision === brief.revision) tasks.push(task);
@@ -142,15 +142,15 @@ export async function compileVariant(r, a) {
   const result = validateGeometry(variant, rules, primitives);
   const built = { svg: result.svg, contentHash, sourceRevision: matrix.revision, ruleRevision: rules.revision, svgHash: await hash(result.svg), compiledAt: r.time() };
   // Immutable production record first, latest pointer last. Old production remains on failure.
-  await r.storage.writeJson(`${schemePath(a)}/builds/${a.iconId}/${a.variantId}/${matrix.revision}.json`, built);
-  await r.storage.writeJson(`${schemePath(a)}/builds/${a.iconId}/${a.variantId}/latest.json`, built);
+  await r.storage.writeJson(`${schemePath(a, r)}/builds/${a.iconId}/${a.variantId}/${matrix.revision}.json`, built);
+  await r.storage.writeJson(`${schemePath(a, r)}/builds/${a.iconId}/${a.variantId}/latest.json`, built);
   variant.productionStatus = 'compiled'; variant.compiledRevision = matrix.revision;
-  await r.writeDocument('matrix', matrixPath(a), matrix);
-  for (const task of tasks) { task.status = 'succeeded'; task.progress = { completed: 2, total: 2, source: 'core' }; await r.writeDocument('task', `${projectPath(a)}/tasks/${task.taskId}.json`, touch(r, task)); }
+  await r.writeDocument('matrix', matrixPath(a, r), matrix);
+  for (const task of tasks) { task.status = 'succeeded'; task.progress = { completed: 2, total: 2, source: 'core' }; await r.writeDocument('task', `${projectPath(a, r)}/tasks/${task.taskId}.json`, touch(r, task)); }
   for (const batchId of new Set(tasks.map(t => t.batchId))) {
     const batch = await readBatch(r, { ...a, batchId });
     const members = await Promise.all(batch.taskIds.map(taskId => readTask(r, { ...a, taskId })));
-    if (members.every(t => t.status === 'succeeded')) { batch.status = 'succeeded'; await r.writeDocument('batch', `${projectPath(a)}/batches/${batchId}.json`, touch(r, batch)); }
+    if (members.every(t => t.status === 'succeeded')) { batch.status = 'succeeded'; await r.writeDocument('batch', `${projectPath(a, r)}/batches/${batchId}.json`, touch(r, batch)); }
   }
   return { variantId: a.variantId, sourceRevision: matrix.revision, contentHash, svg: result.svg };
 }
