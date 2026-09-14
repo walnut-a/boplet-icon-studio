@@ -44,7 +44,7 @@ test('在线原生网关从授权到生产、详情、SVG 导出及刷新重连'
   await expect(page).toHaveURL(/\/studio\/$/);
   assert.equal((await call(transport, 'get_session')).skill.status, 'loaded');
   await page.getByRole('button', { name: '选择目录', exact: true }).click();
-  await page.getByRole('button', { name: '连接已有目录' }).waitFor();
+  await page.getByRole('button', { name: '更换目录' }).waitFor();
   const { p, s, target } = await produce(undefined, transport);
   await call(transport, 'compile_scheme', { ...s, requestId: req() });
   await call(transport, 'navigate', { ...target, view: 'structure', requestId: req() });

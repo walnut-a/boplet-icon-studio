@@ -21,13 +21,13 @@
 macOS / shell（替换绝对路径与包版本）：
 
 ```sh
-ICON_STUDIO_SKILL_LOADED=0.1.0-dev.2 ICON_STUDIO_HTML_CONSENT=granted ICON_STUDIO_HTML_CONSENT_REFERENCE='本次用户明确同意的消息引用' node /absolute/skill/runtime/start.mjs /absolute/authorized-library
+ICON_STUDIO_SKILL_LOADED=0.1.0-dev.3 ICON_STUDIO_HTML_CONSENT=granted ICON_STUDIO_HTML_CONSENT_REFERENCE='本次用户明确同意的消息引用' node /absolute/skill/runtime/start.mjs /absolute/authorized-library
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:ICON_STUDIO_SKILL_LOADED = '0.1.0-dev.2'
+$env:ICON_STUDIO_SKILL_LOADED = '0.1.0-dev.3'
 $env:ICON_STUDIO_HTML_CONSENT = 'granted'
 $env:ICON_STUDIO_HTML_CONSENT_REFERENCE = '本次用户明确同意的消息引用'
 node 'C:\absolute\skill\runtime\start.mjs' 'C:\absolute\authorized-library'

@@ -1,6 +1,7 @@
 import { createWorkerClient } from './client.js';
 import { DirectorySession } from '../storage/directory-session.js';
 import { registerWebMCP } from '../transports/webmcp.js';
+import { discoverDirectory } from '../storage/directory-discovery.js';
 
 export async function startWorkbench({ initializedClient } = {}) {
   const $ = selector => document.querySelector(selector);
@@ -16,24 +17,73 @@ export async function startWorkbench({ initializedClient } = {}) {
   let client = initializedClient ?? createWorkerClient();
   const supported = typeof showDirectoryPicker === 'function';
   let en = false, initialized = false, bound = false, boundHandle, mounted = false, refresh, registration;
+  let discovery, viewerOptions;
   const message = text => { if ($('#web-status')) $('#web-status').textContent = text; };
-  async function enter() {
-    if (!initialized || !session.authorizedHandle || mounted) return;
-    if (bound && boundHandle !== session.authorizedHandle) {
+  async function connectSelectedDirectory(handle = session.authorizedHandle, connect = true) {
+    if (bound && boundHandle !== handle) {
       registration?.dispose(); client.close(); client = createWorkerClient(); bound = false;
       await initialize();
     }
-    if (!bound) { await client.call({ type: 'bind_directory', handle: session.authorizedHandle }); bound = true; boundHandle = session.authorizedHandle; }
+    if (!bound) { await client.call({ type: 'bind_directory', handle }); bound = true; boundHandle = handle; }
+    if (!connect) return;
     const result = await client.call({ type: 'execute', name: 'connect_library', input: { requestId: crypto.randomUUID(), create: false } });
     if (!result.ok && result.error.code !== 'TARGET_NOT_FOUND') throw Error(result.error.message);
+  }
+  function updateDiscoveryOptions() {
+    Object.assign(viewerOptions, {
+      directoryKind: discovery.kind,
+      rootName: session.authorizedHandle.name,
+      discoveredLibraries: discovery.kind === 'collection' ? discovery.libraries.map(({ path, projects }) => ({ path, projects })) : null,
+      directoryIssues: discovery.issues,
+    });
+  }
+  async function scanSelectedDirectory() {
+    discovery = await discoverDirectory(session.authorizedHandle);
+    if (viewerOptions) updateDiscoveryOptions();
+  }
+  async function openLibrary(path) {
+    const library = discovery.libraries.find(l => l.path === path);
+    if (!library) throw Error('项目库已不可用，请刷新目录。');
+    await connectSelectedDirectory(library.handle);
+    viewerOptions.directoryName = [session.authorizedHandle.name, path].filter(Boolean).join('/');
+    const url = new URL(location.href);
+    if (path) url.searchParams.set('library', path); else url.searchParams.delete('library');
+    history.replaceState(null, '', url);
+  }
+  async function enter() {
+    if (!initialized || !session.authorizedHandle || mounted) return;
+    await scanSelectedDirectory();
+    const selectedPath = new URL(location.href).searchParams.get('library');
+    const selected = discovery.libraries.find(l => l.path === selectedPath);
+    await connectSelectedDirectory(selected?.handle ?? session.authorizedHandle, !!selected || discovery.kind === 'library');
     mounted = true;
     document.body.innerHTML = originalBody;
     const { mountOnline } = await import('/studio.js');
-    refresh = await mountOnline((name, input) => client.call({ type: 'execute', name, input }), {
+    viewerOptions = {
       webmcp: !!registration?.available,
-      directoryName: session.authorizedHandle.name,
+      directoryName: [session.authorizedHandle.name, selected?.path].filter(Boolean).join('/'),
+      openLibrary,
+      restoreLibrary: async () => {
+        const path = new URL(location.href).searchParams.get('library');
+        const library = discovery.libraries.find(l => l.path === path);
+        if (library && library.handle !== boundHandle) await openLibrary(path);
+      },
+      refreshDirectory: scanSelectedDirectory,
       disconnect: async () => { await session.disconnect(); location.assign('/studio/'); },
-    });
+      chooseDirectory: async () => {
+        const result = await session.choose();
+        if (result.status !== 'granted') return result;
+        viewerOptions.browseCurrentLibrary = false;
+        const url = new URL(location.href); url.search = ''; url.hash = ''; history.replaceState(null, '', url);
+        await scanSelectedDirectory();
+        await connectSelectedDirectory(session.authorizedHandle, discovery.kind === 'library');
+        viewerOptions.directoryName = session.authorizedHandle.name;
+        await refresh();
+        return result;
+      },
+    };
+    updateDiscoveryOptions();
+    refresh = await mountOnline((name, input) => client.call({ type: 'execute', name, input }), viewerOptions);
   }
   async function act(promise) {
     $('#choose').disabled = true;

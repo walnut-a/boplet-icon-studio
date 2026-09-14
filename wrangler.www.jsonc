@@ -1,0 +1,8 @@
+{
+  "name": "boplet-www",
+  "main": "src/edge/www-redirect.js",
+  "compatibility_date": "2026-09-12",
+  "routes": [{ "pattern": "www.boplet.app", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}

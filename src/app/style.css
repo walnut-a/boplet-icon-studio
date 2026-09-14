@@ -53,6 +53,20 @@ select:disabled{opacity:.45}
 .project-storage{border-top:1px solid var(--line);margin-top:var(--space-8);padding-top:var(--space-6);display:grid;gap:var(--space-3)}
 .project-storage p{overflow-wrap:anywhere}
 .storage-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-1)}
+.directory-empty{max-width:640px;display:grid;gap:var(--space-6)}
+.directory-empty h1{margin:0}
+.directory-empty .selected-directory{overflow-wrap:anywhere;color:var(--muted)}
+.directory-empty section{display:grid;gap:var(--space-3)}
+.directory-empty section+section{padding-top:var(--space-6);border-top:1px solid var(--line)}
+.directory-empty h2{font-size:16px;margin:0}
+.directory-empty p{line-height:1.75}
+.directory-empty a{color:var(--ink);text-underline-offset:4px}
+.directory-empty .directory-safety{font-size:12px;color:var(--muted)}
+.directory-empty .storage-actions{align-items:center;gap:var(--space-4)}
+.collection-location{margin-bottom:var(--space-6);color:var(--muted);overflow-wrap:anywhere}
+.directory-issues{margin-block:var(--space-6);font-size:14px;line-height:1.75}
+.directory-issues h2{font-size:14px;margin-bottom:var(--space-2)}
+.directory-issues ul{padding-left:var(--space-6);overflow-wrap:anywhere}
 .brief-onboarding .project-storage{border-top:0;margin-top:0}
 .brand{align-items:center;gap:var(--space-3)}
 .skill-mark{width:24px;height:24px;flex:none}

@@ -1,5 +1,6 @@
 import { registerWebMCP } from '../transports/webmcp.js';
 import { zipSync, strToU8 } from 'fflate';
+import { directoryCollection, directoryEmpty } from './directory-view.js';
 
 const $ = selector => document.querySelector(selector);
 const main = $('#main'), navigation = $('#navigation'), inspector = $('#inspector');
@@ -99,7 +100,7 @@ async function render(force = false) {
     const a = Object.fromEntries(Object.entries(next.selection).filter(([, value]) => value));
     const target = Object.fromEntries(['projectId', 'schemeId', 'iconId', 'variantId'].filter(k => a[k]).map(k => [k, a[k]]));
     if (storage.connected) {
-      if (next.view === 'library') data = await run('list_projects', { status: 'active', limit: 100 });
+      if (next.view === 'library') data = online && onlineOptions.discoveredLibraries && !onlineOptions.browseCurrentLibrary ? {} : await run('list_projects', { status: 'active', limit: 100 });
       else if (next.view === 'project') data = await run('get_brief', { projectId: next.projectId });
       else if (next.view === 'icons') data = await run('query_icons', { projectId: next.projectId, schemeId: a.schemeId, offset: options.offset, search: options.search, ...(options.tag ? { tag: options.tag } : {}) });
       else { data = await run('get_icon', { projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId }); if (next.view === 'scenes') data.scenes = await run('get_context_preview', { projectId: a.projectId, schemeId: a.schemeId, iconId: a.iconId }); else try { data.preview = await run('preview_icon', target); } catch { data.preview = null; } }
@@ -132,10 +133,17 @@ async function render(force = false) {
     $('.workspace-body').classList.toggle('is-onboarding', onboarding);
     navigation.innerHTML = navigation.hidden ? '' : `<h2>${esc(t('方案'))}</h2><nav>${schemes.map(s => `<button data-action="scheme" data-id="${s.schemeId}" class="scheme-link${project.primarySchemeId && project.primarySchemeId !== s.schemeId ? ' scheme-secondary' : ''}" aria-current="${s.schemeId === next.selection.schemeId ? 'page' : 'false'}"><span>${esc(s.name)}</span>${project.primarySchemeId === s.schemeId ? `<span class="scheme-confirmed">${esc(t('已确认'))}</span>` : ''}</button>`).join('')}</nav>`;
     inspector.hidden = true; inspector.innerHTML = '';
-    if (!storage.connected) { main.innerHTML = online ? empty(language === 'zh' ? '这个目录还没有项目库' : 'No library in this folder', language === 'zh' ? '可以换一个已有项目的目录，或让 Agent 加载 Skill 后在此创建。' : 'Choose an existing project folder, or ask your Agent to load the Skill and create a library here.') + button('断开目录', 'disconnect') + button('连接已有目录', 'connect') : empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect'); wrapPage('library'); return; }
+    if (online && onlineOptions.discoveredLibraries && !onlineOptions.browseCurrentLibrary && next.view === 'library') {
+      main.innerHTML = directoryCollection(onlineOptions, language === 'en'); wrapPage('library'); return;
+    }
+    if (!storage.connected) {
+      main.innerHTML = online ? directoryEmpty(onlineOptions, language === 'en') : empty('尚未连接数据目录', '请在对话中选择并授权本地目录。') + button('连接已有目录', 'connect');
+      wrapPage('library'); return;
+    }
     if (next.view === 'library') {
       main.innerHTML = `<div class="heading"><h1>${esc(t('项目库'))}</h1></div>` + (!data.items.length ? empty('暂无项目', '在对话中描述设计需求，即可开始一个新项目。') : `<div class="project-list">${data.items.map(p => `<button class="project-row" data-action="open-project" data-id="${p.projectId}"><span><strong>${esc(p.name)}</strong><small>${esc(p.purpose ?? '')}</small></span><small>${esc(p.updatedAt.slice(0, 10))}</small></button>`).join('')}</div>`);
       main.innerHTML += storageDetails(storage);
+      if (online && onlineOptions.discoveredLibraries) main.innerHTML += button('返回项目库', 'library');
     } else if (next.view === 'project') {
       const labels = { purpose: '设计目的', stylePreferences: '风格偏好', audience: '用户', usage: '使用场景', scope: '范围', constraints: '约束' };
       const brief = `<div class="brief">${Object.entries(labels).map(([key, label]) => `<section><h2>${esc(t(label))}</h2><p>${esc(data.brief.content.fields[key]?.value ?? t('未提供'))}</p></section>`).join('')}</div>`;
@@ -227,9 +235,14 @@ function drawNodes(svg, layers, selection, size) {
 document.addEventListener('click', async event => {
   const element = event.target.closest('[data-action]'); if (!element || element.disabled) return; error('');
   try { const action = element.dataset.action;
-    if (action === 'refresh') await render(true);
+    if (action === 'refresh') { if (online) await onlineOptions.refreshDirectory?.(); await render(true); }
+    else if (action === 'open-discovered' || action === 'open-library') {
+      await onlineOptions.openLibrary(element.dataset.library);
+      onlineOptions.browseCurrentLibrary = action === 'open-library';
+      await navigate(action === 'open-discovered' ? 'project' : 'library', action === 'open-discovered' ? { projectId: element.dataset.id } : {});
+    }
     else if (action === 'disconnect') { if (online) { await onlineOptions.disconnect(); return; } await run('disconnect_storage',{requestId:rid()}); await render(true); }
-    else if (action === 'library') await navigate('library');
+    else if (action === 'library') { onlineOptions.browseCurrentLibrary = false; await navigate('library'); }
     else if (action === 'project') await navigate('project', { projectId: context.projectId });
     else if (action === 'open-project') await navigate('project', { projectId: element.dataset.id });
     else if (action === 'scheme') { await run('set_view_options',{requestId:rid(),options:{offset:0,tag:null}}); await navigate('icons',{projectId:context.projectId,schemeId:element.dataset.id}); }
@@ -242,7 +255,15 @@ document.addEventListener('click', async event => {
     else if (action === 'download') await exportFiles(variantScope(),'variant');
     else if (action === 'export-scheme') await exportFiles(scope(['projectId','schemeId']),'scheme');
     else if (action === 'copy-agent') await copyForAgent(element);
-    else if (action === 'connect') {await run('connect_library',{requestId:rid(),create:false});await render(true);}
+    else if (action === 'connect') {
+      if (online) {
+        element.disabled = true;
+        try {
+          const result = await onlineOptions.chooseDirectory();
+          if (result.status !== 'granted' && result.status !== 'cancelled') error(language === 'zh' ? '未获得目录访问权限，请再次选择并允许访问。' : 'Folder access was not granted. Choose a folder again and allow access.');
+        } finally { element.disabled = false; }
+      } else { await run('connect_library',{requestId:rid(),create:false});await render(true); }
+    }
   } catch(e) {error(e.message);}
 });
 document.addEventListener('keydown',event=>{if(event.target.matches('.selection-node')){if(['Enter',' '].includes(event.key)){event.preventDefault();event.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();const nodes=[...document.querySelectorAll('.selection-node')],index=nodes.indexOf(event.target),next=event.key==='Home'?0:event.key==='End'?nodes.length-1:(index+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+nodes.length)%nodes.length;nodes[next].focus();}}});
@@ -250,7 +271,7 @@ let searchTimer;
 document.addEventListener('input',event=>{if(event.target.id==='search'){clearTimeout(searchTimer);const search=event.target.value;searchTimer=setTimeout(async()=>{await run('set_view_options',{requestId:rid(),options:{search,offset:0}});await render(true);},180);}});
 document.addEventListener('change',async event=>{const id=event.target.id;if(['grid','nodes','zoom','tags'].includes(id)){options[id==='tags'?'tag':id]=id==='zoom'?Number(event.target.value):id==='tags'?event.target.value||null:event.target.checked;options.offset=0;await run('set_view_options',{requestId:rid(),options});await render(true);}});
 $('#language').onclick=()=>{language=language==='zh'?'en':'zh';localStorage.setItem('icon-studio-language',language);document.documentElement.lang=language==='zh'?'zh-CN':'en';render(true);};
-async function restoreRoute(){try{if(location.hash){const route=JSON.parse(decodeURIComponent(location.hash.slice(1)));await navigate(route.view,Object.fromEntries(Object.entries(route).filter(([k])=>k!=='view')),false);}}catch(e){error(e.message);}}
+async function restoreRoute(){try{if(online)await onlineOptions.restoreLibrary?.();if(location.hash){const route=JSON.parse(decodeURIComponent(location.hash.slice(1)));await navigate(route.view,Object.fromEntries(Object.entries(route).filter(([k])=>k!=='view')),false);}}catch(e){error(e.message);}}
 window.addEventListener('popstate',restoreRoute);
 let resizeTimer;
 window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>render(true),100);});

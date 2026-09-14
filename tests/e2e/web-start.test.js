@@ -23,11 +23,15 @@ test('首页仅在两条用法下提供复制指令，首屏不重复开始按�
   await page.goto('https://boplet.test/');
   await page.getByRole('heading', { name: 'Your new favorite icon design tool.' }).waitFor();
   assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+  const footer = page.locator('.skill-footer');
+  assert.equal(await footer.getByRole('link', { name: 'GitHub', exact: true }).getAttribute('href'), 'https://github.com/walnut-a/icon-studio');
   await page.getByRole('button', { name: '中文', exact: true }).click();
   await page.reload();
   assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN');
   await page.getByRole('heading', { name: '超好用的图标设计工具' }).waitFor();
-  await page.getByText('当前浏览器缺少 WebMCP').waitFor();
+  await page.getByText('当前页面未检测到 WebMCP').waitFor();
+  assert.match(await page.locator('.online-path .capability-note').innerText(), /Codex 内置浏览器/);
+  assert.equal(await page.getByRole('link', { name: '查看支持说明' }).getAttribute('href'), 'https://learn.chatgpt.com/docs/webmcp');
   assert.equal(await page.locator('#choose').isVisible(), false);
   await page.getByRole('heading', { name: '在线使用 WebMCP' }).waitFor();
   await page.getByRole('heading', { name: '本地使用 Skill' }).waitFor();
@@ -70,6 +74,9 @@ test('首页仅在两条用法下提供复制指令，首屏不重复开始按�
   await page.getByRole('button', { name: '切换图标正反色' }).click();
   for (const width of [1957, 1280, 858, 390]) {
     await page.setViewportSize({ width, height: 850 });
+    const brand = await footer.locator('.skill-brand-row').boundingBox();
+    const credit = await footer.locator('.skill-credit').boundingBox();
+    assert.ok(credit.y >= brand.y + brand.height, '灵感来源应独立放在品牌下方');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: `.qa/web-start-${width}.png`, fullPage: true });
   }

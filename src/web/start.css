@@ -105,7 +105,18 @@
 .landing-page #copy:hover,.landing-page #copy-local:hover{background:#272319;border-color:#272319;color:#fffcf4}
 .landing-page .usage-paths{gap:80px;margin-block:32px 36px}
 .landing-page .path-description{min-height:5.25em}
-.landing-page>.skill-footer{background:#fcfbf7;max-width:none;padding-inline:max(32px,calc((100% - 1120px)/2));border-color:#ded8cb}
+.landing-page>.skill-footer{background:#fcfbf7;max-width:none;padding-inline:max(32px,calc((100% - 1120px)/2));padding-block:32px;display:flex;flex-direction:column;align-items:stretch;gap:20px;border-top:1px solid #ded8cb}
+.landing-page .skill-brand-row{justify-content:space-between;gap:24px}
+.landing-page .skill-identity{gap:12px}
+.landing-page .skill-identity .skill-mark{width:32px;height:32px}
+.landing-page .skill-identity strong{font-size:18px}
+.landing-page .skill-wordmark small{font-size:12px;line-height:20px}
+.landing-page .footer-tools{display:flex;align-items:center;gap:16px}
+.landing-page .footer-tools a,.landing-page .footer-tools button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;font-size:14px;color:inherit}
+.landing-page .footer-tools a{text-decoration:none}
+.landing-page .footer-tools a:hover{text-decoration:underline;text-underline-offset:4px}
+.landing-page .skill-credit{font-size:13px;line-height:1.7;color:#655d4e}
+.landing-page .skill-credit a{color:inherit}
 .landing-page ::selection{background:#272319;color:#f4c653}
 .landing-page .how-it-works{background:#fffcf4;box-shadow:0 0 0 100vmax #fffcf4;clip-path:inset(0 -100vmax);padding-block:64px}
 .landing-page .method-intro{display:flex;align-items:baseline;gap:32px;justify-content:space-between}

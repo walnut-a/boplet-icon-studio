@@ -11,6 +11,15 @@ if (/^\/studio\/?$/.test(location.pathname)) {
   const workspace = $('.workspace-body');
   workspace.classList.add('is-library', 'web-start', 'landing-page');
   workspace.append($('.skill-footer'));
+  const footerTools = document.createElement('div');
+  footerTools.className = 'footer-tools';
+  const repositoryLink = document.createElement('a');
+  repositoryLink.href = 'https://github.com/walnut-a/icon-studio';
+  repositoryLink.textContent = 'GitHub';
+  repositoryLink.target = '_blank';
+  repositoryLink.rel = 'noopener noreferrer';
+  footerTools.append(repositoryLink, $('#language'));
+  $('.skill-brand-row').append(footerTools);
   $('.sidebar').remove();
   $('#startup').hidden = true;
   workspace.hidden = false;
