@@ -2,7 +2,7 @@ import { array, bool, enumeration, id, nullable, number, object, point, revision
 import { identity, layerSchema, scopeTarget, vocabularyItemSchema } from './models.js';
 import { doc, i, input, p, s, v } from './project-operations.js';
 import { applyOperations, compileVariant, locateLayer, readBatch, readPrimitives, readTask, validateGeometry, variantContent } from '../core/production.js';
-import { matrixPath, productionGate, projectPath, readMatrix, readScheme, readVocabulary, requireValue, schemePath, touch } from '../core/documents.js';
+import { hash, matrixPath, productionGate, projectPath, readMatrix, readScheme, readVocabulary, requireValue, schemePath, touch } from '../core/documents.js';
 import { StudioError } from './errors.js';
 import { previewLayer } from '../core/geometry.js';
 import { readRules } from '../core/documents.js';
@@ -102,14 +102,15 @@ export function registerProductionOperations(define) {
   } });
   define('list_primitives', { description: '读取当前方案组件身份。', input: object(s), data: object({ primitiveIds: array(id('prim')) }), handler: async (r, a) => ({ primitiveIds: Object.keys(await readPrimitives(r, a)) }) });
   define('get_primitive', { description: '读取明确组件显式几何。', input: object({ ...s, primitiveId: id('prim') }), data: { ...object({ layers: array(layerRef) }), $defs: { layer: layerSchema } }, handler: async (r, a) => ({ layers: requireValue((await readPrimitives(r, a))[a.primitiveId]) }) });
-  define('query_icons', { description: '按语义名称、concept、tags 过滤后分页；只读取当前页矩阵，不编译整库。', input: object({ ...s, ...pageFields, search: { type: 'string', maxLength: 200 }, tag: shortText }, ['projectId', 'schemeId']), data: object({ items: array(object({ icon: vocabularyItemSchema, variants: array(object({ variantId: identity.variantId, size: number, style: text, weight: text })) })), total: { type: 'integer' }, tags: array(text) }), handler: async (r, a) => {
-    await readScheme(r, a); const vocabulary = (await readVocabulary(r, a)).icons.filter(i => i.status === 'active');
+  define('query_icons', { description: '按语义名称、concept、tags 过滤后分页；只读取当前页矩阵，不编译整库。', input: object({ ...s, ...pageFields, search: { type: 'string', maxLength: 200 }, tag: shortText }, ['projectId', 'schemeId']), data: object({ items: array(object({ icon: vocabularyItemSchema, previewKey: text, variants: array(object({ variantId: identity.variantId, size: number, style: text, weight: text })) })), total: { type: 'integer' }, tags: array(text) }), handler: async (r, a) => {
+    const scheme = await readScheme(r, a); const vocabulary = (await readVocabulary(r, a)).icons.filter(i => i.status === 'active');
     const existing = new Set((await r.storage.list(`${schemePath(a, r)}/matrix`)).map(path => /\/(i-[^/]+)\.json$/.exec(path)?.[1]).filter(Boolean));
     const active = vocabulary.filter(i => existing.has(i.iconId));
     const matches = active.filter(i => (!a.tag || i.tags.includes(a.tag)) && (!a.search || `${i.name} ${i.concept} ${i.tags.join(' ')}`.toLocaleLowerCase().includes(a.search.toLocaleLowerCase())));
+    const previewContext = { rules: scheme.ruleRevision ? (await readRules(r, a)).content : null, primitives: await readPrimitives(r, a) };
     const items = []; for (const icon of matches.slice(a.offset ?? 0, (a.offset ?? 0) + (a.limit ?? 48))) {
       const matrix = await r.readDocument('matrix', `${schemePath(a, r)}/matrix/${icon.iconId}.json`);
-      items.push({ icon, variants: matrix.variants.filter(v => v.status === 'active').map(({ variantId, size, style, weight }) => ({ variantId, size, style, weight })) });
+      items.push({ icon, previewKey: await hash({ matrixRevision: matrix.revision, ...previewContext }), variants: matrix.variants.filter(v => v.status === 'active').map(({ variantId, size, style, weight }) => ({ variantId, size, style, weight })) });
     }
     return { items, total: matches.length, tags: [...new Set(active.flatMap(i => i.tags))].sort() };
   } });
