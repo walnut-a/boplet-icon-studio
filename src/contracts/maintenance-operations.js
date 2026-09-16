@@ -35,7 +35,12 @@ export function registerMaintenanceOperations(define) {
     }
     const sample=(items,displaySize,kind,presetId,name)=>{const source=[...items].sort((a,b)=>Math.abs(a.sourceSize-displaySize)-Math.abs(b.sourceSize-displaySize)||b.sourceSize-a.sourceSize)[0];if(source)samples.push({kind,presetId,name,displaySize,sourceSize:source.sourceSize,variantId:source.variantId,inverse:kind==='inverse',svg:source.svg});};
     for(const preset of presets){const items=candidates.filter(c=>c.bindings.includes(preset.presetId));for(const size of preset.sizes)sample(items,size,'usage',preset.presetId,preset.name);}
-    if(candidates.length){for(const size of [16,32,64,128])sample(candidates,size,'size_comparison','comparison','尺寸对比');sample(candidates,64,'inverse','inverse','反色');}
+    if(candidates.length){
+      const nativeSizes=candidates.map(c=>c.sourceSize);
+      const sizesWithNative=base=>[...new Set([...base,...nativeSizes])].sort((a,b)=>a-b);
+      for(const size of sizesWithNative([16,32,64,128]))sample(candidates,size,'size_comparison','comparison','尺寸对比');
+      for(const size of sizesWithNative([64]))sample(candidates,size,'inverse','inverse','反色');
+    }
     return { samples };
   } });
   define('record_feedback', { description: '保留用户原文反馈与目标内容版本。', input: input({ ...v, comment: text }), data: object({ feedback: feedbackSchema }), mutates: true, persists: true, handler: async (r, a) => {

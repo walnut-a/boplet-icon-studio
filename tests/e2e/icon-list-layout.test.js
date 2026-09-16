@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApplication } from '../../scripts/build.js';
@@ -94,4 +94,106 @@ test('返回列表立即复用缩略图，几何和规则修改后刷新预览',
   } finally {
     await browser?.close(); await server?.close(); await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('列表模式展示原尺寸浅深底并保留详情返回模式', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'icon-native-list-'));
+  let browser, server;
+  try {
+    await buildApplication(directory);
+    const { storage, s } = await produce();
+    server = await startServer({ storage, skill, appDirectory: join(directory, 'app') });
+    await fetch(`${server.url}/operation`, { method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${server.token}`}, body:JSON.stringify({name:'connect_library',input:{requestId:req(),create:false}}) });
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/#${encodeURIComponent(JSON.stringify({ view:'icons', ...s }))}`);
+    await page.getByRole('button',{name:'列表模式',exact:true}).click();
+    await expect(page.locator('.icon-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('.native-thumbnail svg')).toHaveCount(2);
+    const sizes = await page.locator('.native-thumbnail svg').evaluateAll(nodes=>nodes.map(n=>[n.getBoundingClientRect().width,n.getBoundingClientRect().height]));
+    assert.deepEqual(sizes,[[16,16],[16,16]]);
+    await page.locator('.icon-table tbody button').first().click();
+    await page.getByRole('button',{name:'返回图标列表',exact:true}).click();
+    await expect(page.locator('.icon-table')).toBeVisible();
+    await page.getByRole('button',{name:'网格模式',exact:true}).click();
+    await expect(page.locator('.icon-tile')).toHaveCount(1);
+  } finally { await browser?.close(); await server?.close(); await rm(directory,{recursive:true,force:true}); }
+});
+
+test('结构与场景切换保留右栏和内容宽度', async () => {
+  const directory=await mkdtemp(join(tmpdir(),'icon-detail-rail-'));let browser,server;
+  try {
+    await buildApplication(directory);
+    const {studio,storage,s,i,target}=await produce();
+    const {variants}=await call(studio,'register_variants',{...i,requestId:req(),variants:[{size:18,style:'filled',weight:'regular'}]});
+    const second={...i,variantId:variants[0].variantId};
+    const {batch}=await call(studio,'create_batch',{...s,requestId:req(),targets:[{iconId:i.iconId,variantId:second.variantId}]});
+    await call(studio,'start_batch',{projectId:s.projectId,batchId:batch.batchId,requestId:req()});
+    await call(studio,'apply_operations',{...second,taskId:batch.taskIds[0],requestId:req(),operations:[{op:'add_layer',layer:{layerId:'l-second',name:'第二尺寸',type:'rect',visible:true,drawing:'fill',strokeWidth:0,x:3,y:3,width:12,height:12,radius:2}}]});
+    await call(studio,'compile_scheme',{...s,requestId:req()});
+    server=await startServer({storage,skill,appDirectory:join(directory,'app')});
+    await fetch(`${server.url}/operation`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${server.token}`},body:JSON.stringify({name:'connect_library',input:{requestId:req(),create:false}})});
+    browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
+    await page.goto(`${server.url}/#${encodeURIComponent(JSON.stringify({view:'structure',...target}))}`);
+    await expect(page.locator('#inspector')).toBeVisible();
+    await page.getByRole('button',{name:'18 × 18 px · 填充 · 常规',exact:true}).click();
+    await expect(page.locator('#inspector')).toContainText('18 × 18 px');
+    await page.context().grantPermissions(['clipboard-read','clipboard-write']);
+    const before=await page.locator('#main').boundingBox();
+    const header=await page.locator('#inspector section').first().innerHTML();
+    await page.getByRole('button',{name:'应用场景',exact:true}).click();
+    await expect(page.locator('#inspector')).toBeVisible();
+    assert.equal((await page.locator('#main').boundingBox()).width,before.width);
+    await expect(page.locator('#inspector #copy-agent')).toBeVisible();
+    await expect(page.locator('#inspector .layers')).toHaveCount(0);
+    assert.equal(await page.locator('#inspector section').first().innerHTML(),header);
+    await page.getByRole('button',{name:'复制给 Agent',exact:true}).click();
+    await expect(page.locator('#copy-agent')).toHaveText('已复制');
+    const instruction=await page.evaluate(()=>navigator.clipboard.readText());
+    assert.ok(instruction.includes(second.variantId),'交接内容指向当前第二尺寸');
+    assert.ok(!instruction.includes(target.variantId),'交接内容不混入默认尺寸');
+    assert.ok(!instruction.includes(server.token),'交接不泄露会话令牌');
+    const downloadPromise=page.waitForEvent('download');
+    await page.getByRole('button',{name:'下载 SVG',exact:true}).click();
+    const download=await downloadPromise;
+    const svg=await readFile(await download.path(),'utf8');
+    assert.match(svg,/viewBox="0 0 18 18"/,'下载的是 18px SVG');
+    await page.reload();
+    await expect(page.locator('#inspector')).toContainText('18 × 18 px');
+    await page.getByRole('button',{name:'图标结构',exact:true}).click();
+    await expect(page.locator('#inspector .layers')).toBeVisible();
+    await expect(page.locator('#inspector')).toContainText('18 × 18 px');
+    assert.equal((await page.locator('#main').boundingBox()).width,before.width);
+  }finally{await browser?.close();await server?.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('列表与详情滚动独立，返回和浏览器历史恢复列表位置', async () => {
+  const directory=await mkdtemp(join(tmpdir(),'icon-scroll-'));let browser,server;
+  try {
+    await buildApplication(directory);
+    const {studio,storage,p,s}=await produce();
+    const {icons}=await call(studio,'register_icons',{...p,requestId:req(),icons:Array.from({length:15},(_,n)=>({name:`滚动样本 ${n}`,concept:`滚动测试 ${n}`,tags:[],usages:[]}))});
+    for(const icon of icons)await call(studio,'register_variants',{...s,iconId:icon.iconId,requestId:req(),variants:[{size:16,style:'outline',weight:'regular'}]});
+    server=await startServer({storage,skill,appDirectory:join(directory,'app')});
+    await fetch(`${server.url}/operation`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${server.token}`},body:JSON.stringify({name:'connect_library',input:{requestId:req(),create:false}})});
+    browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:950,height:500}});
+    await page.goto(`${server.url}/#${encodeURIComponent(JSON.stringify({view:'icons',...s}))}`);
+    for(const mode of ['grid','list']) {
+      if(mode==='list')await page.getByRole('button',{name:'列表模式',exact:true}).click();
+      const cards=page.locator(mode==='grid'?'.icon-tile':'.native-cell');
+      await expect(page.locator(mode==='grid'?'.thumbnail':'.native-thumbnail').filter({hasText:'尚未绘制'})).toHaveCount(mode==='grid'?15:30);
+      await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+      const position=await page.evaluate(()=>window.scrollY);assert.ok(position>100);
+      await cards.last().click();await expect(page.locator('.canvas')).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);
+      await page.getByRole('button',{name:'返回图标列表',exact:true}).click();
+      await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(position);
+      await cards.last().click();await expect(page.locator('.canvas')).toBeVisible();
+      await page.goBack();await expect(cards.last()).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(position);
+      await page.goForward();await expect(page.locator('.canvas')).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);
+      await page.getByRole('button',{name:'返回图标列表',exact:true}).click();
+    }
+  }finally{await browser?.close();await server?.close();await rm(directory,{recursive:true,force:true});}
 });
