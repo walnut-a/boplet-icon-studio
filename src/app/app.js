@@ -12,7 +12,7 @@ let iconListMode = localStorage.getItem('icon-studio-list-mode') === 'list' ? 'l
 const thumbnailKey = (scope, item, variant = item.variants[0]) => JSON.stringify([scope.projectId, scope.schemeId, item.icon.iconId, variant?.variantId, item.previewKey]);
 let onlineOptions = {};
 let token, context, capabilities, rendering = false, lastSnapshot = '', language = localStorage.getItem('icon-studio-language') ?? 'zh', options = { grid: true, nodes: true, zoom: 1, search: '', tag: null, offset: 0 };
-const translations = { '列表模式':'List view', '网格模式':'Grid view', '浅底':'Light', '深底':'Dark', '图标':'Icon', '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层或节点查看属性。': 'Select a layer or node to inspect it.', '设计目的': 'Purpose', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
+const translations = { '列表模式':'List view', '网格模式':'Grid view', '浅底':'Light', '深底':'Dark', '图标':'Icon', '项目库': 'Projects', '项目': 'Project', '方案': 'Schemes', '图标列表': 'Icons', '返回项目库': 'All projects', '返回项目': 'Project overview', '返回图标列表': 'All icons', '导出': 'Export', '图标结构': 'Structure', '应用场景': 'Contexts', '图标详情': 'Icon details', '下载 SVG': 'Download SVG', '图层': 'Layers', '属性': 'Properties', '网格': 'Grid', '节点': 'Nodes', '缩放': 'Zoom', '实际尺寸': 'Actual size', '尺寸 / 样式': 'Size / style', '填充': 'Filled', '描边': 'Outline', '标签': 'Tags', '全部': 'All', '搜索图标': 'Search icons', '上一页': 'Previous', '下一页': 'Next', '刷新': 'Refresh', '断开目录': 'Disconnect', '暂无项目': 'No projects yet', '在对话中描述设计需求，即可开始一个新项目。': 'Describe your design needs in the conversation to start a project.', '暂无方案': 'No schemes yet', '项目需求确认后，可在对话中创建方案。': 'Create a scheme in the conversation after confirming the brief.', '没有匹配的图标': 'No matching icons', '尝试调整搜索条件。': 'Try a different search.', '尚未绘制': 'Not drawn yet', '暂无应用场景': 'No contexts yet', '尚未登记这个图标的应用用途。': 'No usage contexts are registered for this icon.', '选择图层查看属性。': 'Select a layer to inspect it.', '设计目的': 'Purpose', '用户': 'Audience', '使用场景': 'Usage', '范围': 'Scope', '约束': 'Constraints', '未提供': 'Not provided', '需求': 'Brief', '尚未连接数据目录': 'No data directory connected', '请在对话中选择并授权本地目录。': 'Choose and authorize a local directory in the conversation.', '连接已有目录': 'Connect directory', '连接失败，请刷新或按 Skill 说明重新启动本地服务。': 'Connection failed. Refresh or restart the local service using the Skill instructions.' };
 Object.assign(translations, {
   '复制给 Agent': 'Copy for Agent', '已复制': 'Copied', '正在复制…': 'Copying…', '已确认': 'Confirmed',
   '给 Agent 的指令': 'Instructions for Agent', '无法自动复制，请选中下方指令手动复制。': 'Automatic copy is unavailable. Select and copy the instructions below.',
@@ -201,14 +201,24 @@ async function render(force = false) {
         main.innerHTML += sceneBoard(data.scenes.samples);
       } else {
         const variant = data.matrix.variants.find(v => v.variantId === a.variantId); if (!variant) throw Error('当前变体不存在，请返回列表。');
-        main.innerHTML += `<div class="versions">${data.matrix.variants.filter(v => v.status === 'active').map(v => button(`${v.size} × ${v.size} px · ${t(v.style === 'filled' ? '填充' : '描边')} · ${({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]&&language==='zh'?({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight]:v.weight}`, 'structure', `data-variant="${v.variantId}" aria-pressed="${v.variantId === a.variantId}"`)).join('')}</div><div class="frame"><div class="toolbar"><label><input id="grid" type="checkbox" ${options.grid ? 'checked' : ''}>${esc(t('网格'))}</label><label><input id="nodes" type="checkbox" ${options.nodes ? 'checked' : ''}>${esc(t('节点'))}</label><label>${esc(t('缩放'))}<select id="zoom">${[0.5, 1, 2, 4].map(z => `<option value="${z}" ${options.zoom === z ? 'selected' : ''}>${z * 100}%</option>`).join('')}</select></label></div><div class="canvas"></div><div class="actual"><small>${esc(t('实际尺寸'))}</small></div></div>`;
+        const activeVariants = data.matrix.variants.filter(v => v.status === 'active');
+        const variedStyles = new Set(activeVariants.map(v => v.style)).size > 1;
+        const variedWeights = new Set(activeVariants.map(v => v.weight)).size > 1;
+        const variantButtons = activeVariants.map(v => {
+          const style = t(v.style === 'filled' ? '填充' : '描边');
+          const weight = language === 'zh' ? ({light:'细',regular:'常规',medium:'中等',bold:'粗'})[v.weight] ?? v.weight : v.weight;
+          const fullLabel = `${v.size} × ${v.size} px · ${style} · ${weight}`;
+          const label = [`${v.size} px`, ...(variedStyles ? [style] : []), ...(variedWeights ? [weight] : [])].join(' · ');
+          return button(label, 'structure', `data-variant="${v.variantId}" aria-pressed="${v.variantId === a.variantId}" aria-label="${esc(fullLabel)}" title="${esc(fullLabel)}"`);
+        }).join('');
+        main.innerHTML += `<div class="frame"><div class="canvas"></div><div class="canvas-controls"><div class="versions">${variantButtons}</div><div class="toolbar"><label><input id="grid" type="checkbox" ${options.grid ? 'checked' : ''}>${esc(t('网格'))}</label><label>${esc(t('缩放'))}<select id="zoom">${[0.5, 1, 2, 4].map(z => `<option value="${z}" ${options.zoom === z ? 'selected' : ''}>${z * 100}%</option>`).join('')}</select></label></div></div><div class="actual"><small>${esc(t('实际尺寸'))}</small></div></div>`;
         $('.actual').style.setProperty('--sample-size', `${Math.max(64, ...data.matrix.variants.filter(v => v.status === 'active').map(v => v.size + 32))}px`);
         const preview = data.preview; if (!preview) $('.canvas').innerHTML = empty('尚未绘制');
-        if (preview) { $('.canvas').innerHTML = preview.svg; const svg = $('.canvas svg'); svg.style.width = `${Math.min(520, window.innerWidth - 96) * options.zoom}px`; svg.style.maxWidth = 'none';
+        if (preview) { $('.canvas').innerHTML = preview.svg; const svg = $('.canvas svg'); svg.style.width = `calc(min(520px, 100cqw, 100cqh) * ${options.zoom})`; svg.style.maxWidth = 'none';
           if (options.grid) { const ns = 'http://www.w3.org/2000/svg'; const grid = document.createElementNS(ns, 'g'); for (let n = 0; n <= variant.size; n++) { for (const [x1,y1,x2,y2] of [[n,0,n,variant.size],[0,n,variant.size,n]]) { const line = document.createElementNS(ns, 'line'); Object.entries({ x1,y1,x2,y2,class:'grid-line' }).forEach(([k,v])=>line.setAttribute(k,v)); grid.append(line); } } svg.prepend(grid); }
           $('.actual').innerHTML += `<span class="sample">${preview.svg}</span><span class="sample inverse">${preview.svg}</span><small>${variant.size} × ${variant.size} px</small>`;
           if (data.layer) drawSelection(svg, data.layer.preview, a.layerId);
-          if (options.nodes && a.layerId) drawNodes(svg, variant.layers, a, variant.size);
+
         }
         inspector.innerHTML = `<section><h2>${esc(t('图层'))}</h2><div class="layers">${layerButtons(variant.layers, a.layerId)}</div></section><section><h2>${esc(t('属性'))}</h2>${properties(variant.layers, a)}</section>`;
       }
@@ -259,24 +269,12 @@ function drawSelection(svg, preview, layerId) {
   svg.append(group);
 }
 function properties(layers, selection) {
-  const layer = flatten(layers).find(l => l.layerId === selection.layerId); if (!layer) return `<p>${esc(t('选择图层或节点查看属性。'))}</p>`;
+  const layer = flatten(layers).find(l => l.layerId === selection.layerId); if (!layer) return `<p>${esc(t('选择图层查看属性。'))}</p>`;
   const node = layer.nodes?.find(n => n.nodeId === selection.nodeId);
   const values = node ? { nodeId: node.nodeId, handle: selection.handle ?? 'point', point: node[selection.handle ?? 'point'] } : Object.fromEntries(Object.entries(layer).filter(([k])=>!['name','children','nodes'].includes(k)));
   const labels = {layerId:'图层 ID',type:'类型',drawing:'绘制',visible:'可见',x:'X',y:'Y',width:'宽度',height:'高度',radius:'圆角',strokeWidth:'描边宽度',center:'中心',radiusX:'横向半径',radiusY:'纵向半径',start:'起点',end:'终点',transform:'变换',operation:'布尔运算',primitiveId:'组件 ID',closed:'闭合',nodeId:'节点 ID',handle:'控制点',point:'坐标'};
   const names = {rect:'矩形',ellipse:'椭圆',line:'直线',path:'路径',boolean:'布尔组合',group:'组',instance:'组件实例',fill:'填充',stroke:'描边',subtract:'相减',union:'合并',intersect:'相交',exclude:'排除',point:'锚点',in:'入控制柄',out:'出控制柄'};
   return `<dl class="properties">${Object.entries(values).map(([k,v])=>`<dt>${esc(language==='zh'?labels[k]??k:k)}</dt><dd>${esc(Array.isArray(v)?v.join(', '):typeof v==='boolean'?(language==='zh'?(v?'是':'否'):String(v)):language==='zh'?names[v]??v:v)}</dd>`).join('')}</dl>`;
-}
-function drawNodes(svg, layers, selection, size) {
-  const layer = flatten(layers).find(l => l.layerId === selection.layerId); if (!layer?.nodes) return;
-  const scale = size / (Math.min(520, window.innerWidth - 96) * options.zoom);
-  const chain = (items, matrices = []) => { for (const item of items) { const next = [...matrices, ...(item.transform ? [item.transform] : [])]; if (item.layerId === selection.layerId) return next; if (item.children) { const found = chain(item.children, next); if (found) return found; } } };
-  const transforms = chain(layers) ?? [];
-  const world = point => transforms.reduceRight(([x,y],[a,b,c,d,tx,ty])=>[a*x+c*y+tx,b*x+d*y+ty],point);
-  for (const node of layer.nodes) for (const handle of ['point','in','out']) { if (!node[handle]) continue;
-    const group = document.createElementNS('http://www.w3.org/2000/svg','g'); const [x,y]=world(node[handle]);
-    Object.entries({ id:`node-${node.nodeId}-${handle}`,class:'selection-node',tabindex:0,role:'button','aria-label':`${node.nodeId} ${handle}`,'aria-pressed':String(node.nodeId===selection.nodeId&&handle===selection.handle),'data-action':'node','data-node':node.nodeId,'data-handle':handle }).forEach(([k,v])=>group.setAttribute(k,v));
-    group.innerHTML=`<circle cx="${x}" cy="${y}" r="${12*scale}" class="node-hit"/><circle cx="${x}" cy="${y}" r="${4*scale}" class="node-dot" vector-effect="non-scaling-stroke"/>`;svg.append(group);
-  }
 }
 document.addEventListener('click', async event => {
   const element = event.target.closest('[data-action]'); if (!element || element.disabled) return; error('');
@@ -297,7 +295,7 @@ document.addEventListener('click', async event => {
     else if (action === 'icon') await navigate('structure',{...scope(['projectId','schemeId']),iconId:element.dataset.id,variantId:element.dataset.variant});
     else if (action === 'structure') await navigate('structure',{...iconScope(),variantId:element.dataset.variant});
     else if (action === 'scenes') await navigate('scenes',iconScope());
-    else if (action === 'layer' || action === 'node') { await run('select_geometry',{requestId:rid(),expectedContextId:context.contextId,layerId:action==='layer'?element.dataset.id:context.selection.layerId,...(action==='node'?{nodeId:element.dataset.node,handle:element.dataset.handle}:{})}); await render(true); }
+    else if (action === 'layer') { await run('select_geometry',{requestId:rid(),expectedContextId:context.contextId,layerId:context.selection.layerId === element.dataset.id ? null : element.dataset.id}); await render(true); }
     else if (action === 'previous' || action === 'next') {await run('set_view_options',{requestId:rid(),options:{offset:options.offset+(action==='next'?48:-48)}});await render(true);}
     else if (action === 'download') await exportFiles(variantScope(),'variant');
     else if (action === 'export-scheme') await exportFiles(scope(['projectId','schemeId']),'scheme');
@@ -313,10 +311,9 @@ document.addEventListener('click', async event => {
     }
   } catch(e) {error(e.message);}
 });
-document.addEventListener('keydown',event=>{if(event.target.matches('.selection-node')){if(['Enter',' '].includes(event.key)){event.preventDefault();event.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();const nodes=[...document.querySelectorAll('.selection-node')],index=nodes.indexOf(event.target),next=event.key==='Home'?0:event.key==='End'?nodes.length-1:(index+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+nodes.length)%nodes.length;nodes[next].focus();}}});
 let searchTimer;
 document.addEventListener('input',event=>{if(event.target.id==='search'){clearTimeout(searchTimer);const search=event.target.value;searchTimer=setTimeout(async()=>{await run('set_view_options',{requestId:rid(),options:{search,offset:0}});await render(true);},180);}});
-document.addEventListener('change',async event=>{const id=event.target.id;if(['grid','nodes','zoom','tags'].includes(id)){options[id==='tags'?'tag':id]=id==='zoom'?Number(event.target.value):id==='tags'?event.target.value||null:event.target.checked;options.offset=0;await run('set_view_options',{requestId:rid(),options});await render(true);}});
+document.addEventListener('change',async event=>{const id=event.target.id;if(['grid','zoom','tags'].includes(id)){options[id==='tags'?'tag':id]=id==='zoom'?Number(event.target.value):id==='tags'?event.target.value||null:event.target.checked;options.offset=0;await run('set_view_options',{requestId:rid(),options});await render(true);}});
 $('#language').onclick=()=>{language=language==='zh'?'en':'zh';localStorage.setItem('icon-studio-language',language);document.documentElement.lang=language==='zh'?'zh-CN':'en';render(true);};
 async function restoreRoute(){try{if(online)await onlineOptions.restoreLibrary?.();if(location.hash){const route=JSON.parse(decodeURIComponent(location.hash.slice(1)));await navigate(route.view,Object.fromEntries(Object.entries(route).filter(([k])=>k!=='view')),false);}}catch(e){error(e.message);}}
 window.addEventListener('popstate',restoreRoute);

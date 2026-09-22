@@ -37,9 +37,10 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   const requestId = () => crypto.randomUUID();
   const checkContentRail = async (limit) => {
     await expect(page.locator('.page-body')).toHaveAttribute('data-layout', limit === 760 ? 'reading' : limit === 1000 ? 'detail' : 'collection');
-    const rail = await page.locator('.page-body').boundingBox();
-    const area = await page.locator('#main').boundingBox();
-    assert.ok(rail.width <= limit && Math.abs(rail.x + rail.width / 2 - area.x - area.width / 2) < 2, '当前页面内容限宽并在可用主区域居中');
+    await expect.poll(() => page.locator('.page-body').evaluate((el, limit) => {
+      const rail = el.getBoundingClientRect(), area = el.closest('#main').getBoundingClientRect();
+      return rail.width <= limit && Math.abs(rail.x + rail.width / 2 - area.x - area.width / 2) < 2;
+    }, limit), { message: '当前页面内容限宽并在可用主区域居中' }).toBe(true);
   };
   await invoke('connect_library', { create: true, requestId: requestId() });
   await expect(page.locator('#main h1')).toHaveText('项目库');
@@ -119,9 +120,10 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   })), true, '每个字段名独占一行，内容在其下方左对齐');
   assert.equal(await page.locator('#main input, #main textarea, #main [contenteditable=true]').count(), 0);
   assert.equal(await page.locator('.workflow-steps button').count(), 0);
-  const briefBox = await page.locator('.brief-onboarding').boundingBox();
-  const bodyBox = await page.locator('#main').boundingBox();
-  assert.ok(Math.abs(briefBox.x + briefBox.width / 2 - (bodyBox.x + bodyBox.width / 2)) < 2, '需求内容栏在扣除滚动条预留空间后的页面居中');
+  await expect.poll(() => page.locator('.brief-onboarding').evaluate(el => {
+    const briefBox = el.getBoundingClientRect(), bodyBox = el.closest('#main').getBoundingClientRect();
+    return Math.abs(briefBox.x + briefBox.width / 2 - (bodyBox.x + bodyBox.width / 2));
+  }), { message: '需求内容栏在扣除滚动条预留空间后的页面居中' }).toBeLessThan(2);
   await page.setViewportSize({ width: 390, height: 844 });
   if (!native) await page.screenshot({ path: '.impeccable/review/brief-confirmation-mobile.png', fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -210,6 +212,11 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   assert.equal(await page.locator('.selection-node').count(),0,'矩形不伪装成路径节点');
   const indent=await page.getByRole('button',{name:'内空',exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft));
   assert.ok(indent>await page.getByRole('button',{name:'组合',exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft)));
+  await page.getByRole('button',{name:'内空',exact:true}).click();
+  await expect(page.locator('.geometry-selection')).toHaveCount(0);
+  await expect(page.locator('#inspector')).toContainText('选择图层查看属性。');
+  assert.equal((await invoke('get_selection')).selection.layerId,null,'再次点击已选图层取消选择');
+  await expect(page.getByRole('button',{name:'内空',exact:true})).toBeFocused();
   await page.getByRole('button',{name:'组合',exact:true}).click();
   await expect(page.locator('.geometry-selection')).toHaveAttribute('data-layer-id','l-ring');
   const actualCenter=await page.locator('.actual').evaluate(el=>{const items=[...el.children],first=items[0].getBoundingClientRect(),last=items.at(-1).getBoundingClientRect(),box=el.getBoundingClientRect();return Math.abs((first.left+last.right)/2-(box.left+box.right)/2);});
@@ -221,10 +228,11 @@ for (const native of [false, true]) test(`${native ? '原生 WebMCP' : '本地 H
   if(!native) await page.screenshot({path:'.impeccable/review/layer-selection-mobile.png',fullPage:true});
   await page.setViewportSize({width:1903,height:1320});
   await expect.poll(()=>page.locator('.canvas svg').evaluate(el=>el.getBoundingClientRect().width)).toBe(520);
-  await page.getByRole('button',{name:'外壳',exact:true}).click(); await page.getByRole('button',{name:'n-0 point',exact:true}).waitFor();
-  await page.getByRole('button',{name:'n-0 point',exact:true}).click();
-  await expect(page.getByRole('button',{name:'n-0 point',exact:true})).toHaveAttribute('aria-pressed','true');
-  let selected=await invoke('get_selection'); assert.equal(selected.selection.nodeId,'n-0');assert.equal(selected.selection.layerId,'l-shell');
+  await page.getByRole('button',{name:'外壳',exact:true}).click();
+  await expect(page.locator('.geometry-selection')).toHaveAttribute('data-layer-id','l-shell');
+  await expect(page.locator('#nodes')).toHaveCount(0);
+  await expect(page.locator('.selection-node')).toHaveCount(0);
+  let selected=await invoke('get_selection');assert.equal(selected.selection.layerId,'l-shell');
   await mkdir('.impeccable/review',{recursive:true});if(!native)await page.screenshot({path:'.impeccable/review/user-1903.png',fullPage:true});
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载 SVG',exact:true}).click();assert.match((await download).suggestedFilename(),/\.svg$/);
   await page.getByRole('button',{name:'应用场景',exact:true}).click();await page.locator('.scene-sample').first().waitFor();

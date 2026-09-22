@@ -12,7 +12,8 @@ import { createServer } from 'node:http';
 test('在线原生网关从授权到生产、详情、SVG 导出及刷新重连', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'boplet-online-'));
   t.after(() => rm(dir, { recursive: true, force: true })); await buildWeb(dir);
-  const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-experimental-web-platform-features'] }); t.after(() => browser.close());
+  // Chrome 153 的无痕模式反序列化目录句柄会崩溃；空路径创建自动清理的独立临时配置。
+  const browser = await chromium.launchPersistentContext('', { channel: 'chrome', headless: true, args: ['--enable-experimental-web-platform-features'] }); t.after(() => browser.close());
   const page = await browser.newPage(); const errors = [], urls = [];
   page.on('pageerror', e => errors.push(e.message));
   // Only the picker is substituted; real directory handles, Worker and native WebMCP remain intact.

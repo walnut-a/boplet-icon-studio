@@ -197,3 +197,36 @@ test('列表与详情滚动独立，返回和浏览器历史恢复列表位置',
     }
   }finally{await browser?.close();await server?.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test('结构画布优先展示，控件在下方且默认图标完整适配宽高', async () => {
+  const directory=await mkdtemp(join(tmpdir(),'icon-canvas-fit-'));let browser,server;
+  try {
+    await buildApplication(directory);
+    const {studio,storage,target,i}=await produce();
+    await call(studio,'register_variants',{...i,requestId:req(),variants:[{size:18,style:'outline',weight:'regular'}]});
+    server=await startServer({storage,skill,appDirectory:join(directory,'app')});
+    await fetch(`${server.url}/operation`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${server.token}`},body:JSON.stringify({name:'connect_library',input:{requestId:req(),create:false}})});
+    browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage();
+    for(const viewport of [{width:1470,height:837},{width:1117,height:837},{width:1280,height:650},{width:390,height:844}]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`${server.url}/#${encodeURIComponent(JSON.stringify({view:'structure',...target}))}`);
+      await expect(page.locator('.canvas>svg')).toBeVisible();
+      await page.locator('#zoom').selectOption('1');
+      await expect.poll(()=>page.locator('.canvas>svg').count()).toBe(1);
+      await expect.poll(()=>page.locator('.canvas>svg').evaluate(el=>{
+        const svg=el.getBoundingClientRect(),canvas=el.parentElement.getBoundingClientRect();
+        return svg.y>=canvas.y&&svg.bottom<=canvas.bottom+1&&svg.x>=canvas.x&&svg.right<=canvas.right+1;
+      })).toBe(true);
+      const {canvas,svg,versions,toolbar}=await page.evaluate(()=>Object.fromEntries(Object.entries({canvas:'.canvas',svg:'.canvas>svg',versions:'.versions',toolbar:'.toolbar'}).map(([key,selector])=>[key,document.querySelector(selector).getBoundingClientRect().toJSON()])));
+      assert.ok(svg.y>=canvas.y&&svg.y+svg.height<=canvas.y+canvas.height+1,'默认图标纵向完整');
+      assert.ok(svg.x>=canvas.x&&svg.x+svg.width<=canvas.x+canvas.width+1,'默认图标横向完整');
+      assert.ok(versions.y>=canvas.y+canvas.height,'变体位于画布下方');
+      assert.ok(toolbar.y>=canvas.y+canvas.height,'调整控件位于画布下方');
+      if(viewport.width>=1117) assert.ok(Math.abs(versions.y+versions.height/2-toolbar.y-toolbar.height/2)<2,'变体与画布工具在一行居中对齐');
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      if(viewport.width===390) await page.screenshot({path:'.impeccable/review/canvas-controls-mobile.png',fullPage:true});
+      await page.locator('#zoom').selectOption('2');
+      await expect.poll(async()=>(await page.locator('.canvas>svg').boundingBox())?.width??0).toBeCloseTo(svg.width*2,0);
+    }
+  }finally{await browser?.close();await server?.close();await rm(directory,{recursive:true,force:true});}
+});

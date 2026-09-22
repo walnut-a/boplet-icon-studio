@@ -137,3 +137,14 @@ select:disabled{opacity:.45}
 .list-mode-switch button[aria-pressed=true],.list-mode-switch button[aria-pressed=true]:hover{background:var(--selected);color:var(--ink)}
 button.native-cell:not(:disabled):hover{background:#f1f1f1}button.native-cell.native-dark:not(:disabled):hover{background:#333;color:#f7f7f7}
 .list-title{display:flex;align-items:baseline;gap:12px;min-width:0;flex-wrap:wrap}.list-title .count{margin-left:0;white-space:nowrap;font-size:12px;font-weight:400}
+
+/* Keep the drawing above its controls; fit 100% to both canvas dimensions. */
+.canvas{container-type:size;min-height:0;height:clamp(240px,calc(100dvh - 360px),760px);padding:var(--space-6);place-items:safe center}
+.canvas>svg{flex-shrink:0}
+.canvas-controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3) var(--space-4);padding:var(--space-3) var(--space-4);border-top:1px solid var(--line)}
+.canvas-controls .versions{margin:0;gap:var(--space-1)}
+.canvas-controls .versions button{background:transparent;border-color:transparent;white-space:nowrap}
+.canvas-controls .versions button[aria-pressed=true]{background:var(--selected);border-color:var(--line)}
+.canvas-controls .toolbar{margin-left:auto;padding:0;border:0;gap:var(--space-4);flex-shrink:0}
+.canvas-controls .toolbar label{white-space:nowrap}
+@media(max-width:700px){.canvas{height:320px}.canvas-controls .toolbar{margin-left:0;width:100%}}

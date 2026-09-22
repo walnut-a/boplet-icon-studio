@@ -14,7 +14,8 @@ test('没有 WebMCP 或 Agent 也能直接打开、刷新恢复、导出及遗�
   const { studio, storage, s, target } = await produce();
   await call(studio, 'compile_scheme', { ...s, requestId: req() });
   const files = await Promise.all((await storage.list()).map(async path => [path, JSON.stringify(await storage.readJson(path))]));
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  // Chrome 153 的无痕模式反序列化目录句柄会崩溃；空路径创建自动清理的独立临时配置。
+  const browser = await chromium.launchPersistentContext('', { channel: 'chrome', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage(); const errors = [];
   page.on('pageerror', e => errors.push(e.message));

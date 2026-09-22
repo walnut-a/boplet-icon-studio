@@ -40,7 +40,8 @@ test('主方案只显示已确认，复制按视图范围，失败可手动复�
  await page.getByRole('button',{name:'应用场景',exact:true}).click();
  await expect(page.getByRole('button',{name:'应用场景',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'复制给 Agent',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>window.copied)).toContain('"scope": "icon"');
+ await expect.poll(()=>page.evaluate(()=>window.copied)).toContain('"scope": "variant"');
+ assert.ok((await page.evaluate(()=>window.copied)).includes(target.variantId),'场景右栏继续操作当前变体');
  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{value:{write:async()=>{throw Error('denied');},writeText:async()=>{throw Error('denied');}}});});
  await page.getByRole('button',{name:'复制给 Agent',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'给 Agent 的指令'})).toBeVisible();
