@@ -14,7 +14,7 @@ if (/^\/studio\/?$/.test(location.pathname)) {
   const footerTools = document.createElement('div');
   footerTools.className = 'footer-tools';
   const repositoryLink = document.createElement('a');
-  repositoryLink.href = 'https://github.com/walnut-a/icon-studio';
+  repositoryLink.href = 'https://github.com/walnut-a/boplet-icon-studio';
   repositoryLink.textContent = 'GitHub';
   repositoryLink.target = '_blank';
   repositoryLink.rel = 'noopener noreferrer';

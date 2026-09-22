@@ -20,7 +20,7 @@
 
 网页可以汇总父目录下一级的多个库；本地启动器仍绑定一个库。跨库查看不等于合并，不能为实现切换直接搬动项目文件或改写 `libraryId`。
 
-分发来源是 Boplet 的 GitHub 仓库 `walnut-a/icon-studio`，不通过 npm 发布。仓库公开并有正式可下载的 Release 后，优先安装该 Release 的完整 ZIP，并核对同一版本 `release.json` 的 SHA-256。当前官网 `/downloads/release.json` 是安装入口索引；是否可下载以实际响应为准，不把候选清单中的计划地址当已发布。只拉取源码时，应按仓库 README 构建完整包，不能直接把原始 `skill/` 当成可运行安装。更新须用户同意，保留旧安装及独立数据目录；不自动追踪主分支覆盖安装。
+分发来源是 Boplet 的 GitHub 仓库 `walnut-a/boplet-icon-studio`，不通过 npm 发布。仓库公开并有正式可下载的 Release 后，优先安装该 Release 的完整 ZIP，并核对同一版本 `release.json` 的 SHA-256。当前官网 `/downloads/release.json` 是安装入口索引；是否可下载以实际响应为准，不把候选清单中的计划地址当已发布。只拉取源码时，应按仓库 README 构建完整包，不能直接把原始 `skill/` 当成可运行安装。更新须用户同意，保留旧安装及独立数据目录；不自动追踪主分支覆盖安装。
 
 需要 Node.js 22.23.1 或更新的 22.x。所有程序依赖已随包构建，无 npm 安装、Python、CDN 或账号依赖。系统 Node 是宿主运行前提，不打包 OS 二进制。
 

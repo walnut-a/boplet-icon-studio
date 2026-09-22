@@ -3,7 +3,9 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildSkill, archiveSkill } from './package.js';
 
-const repository = 'walnut-a/icon-studio';
+export const repository = 'walnut-a/boplet-icon-studio';
+// 已发布清单不可变，改名前的仓库地址继续参与完整校验。
+const releaseRepositories = new Set([repository, 'walnut-a/icon-studio']);
 
 // Prepare artifacts only. Publishing and repository visibility are separate operations.
 export async function prepareRelease(directory, { tag } = {}) {
@@ -27,10 +29,10 @@ export async function readRelease(directory) {
   const manifest = JSON.parse(await readFile(join(directory, 'release.json'), 'utf8'));
   const { report, bytes, sha256 } = await archiveSkill(join(directory, 'skill'));
   const filename = `make-product-icons-${report.version}.zip`;
-  if (manifest.skillId !== 'make-product-icons' || manifest.repository !== repository ||
+  if (manifest.skillId !== 'make-product-icons' || !releaseRepositories.has(manifest.repository) ||
       manifest.version !== report.version || manifest.tag !== `v${report.version}` ||
       manifest.filename !== filename || manifest.buildId !== report.buildId ||
-      manifest.url !== `https://github.com/${repository}/releases/download/${manifest.tag}/${filename}` ||
+      manifest.url !== `https://github.com/${manifest.repository}/releases/download/${manifest.tag}/${filename}` ||
       manifest.sha256 !== sha256 || manifest.bytes !== bytes.length ||
       !Buffer.from(bytes).equals(await readFile(join(directory, filename)))) throw Error('发布候选校验失败');
   return manifest;

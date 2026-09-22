@@ -24,7 +24,7 @@ test('首页仅在两条用法下提供复制指令，首屏不重复开始按�
   await page.getByRole('heading', { name: 'Your new favorite icon design tool.' }).waitFor();
   assert.equal(await page.locator('html').getAttribute('lang'), 'en');
   const footer = page.locator('.skill-footer');
-  assert.equal(await footer.getByRole('link', { name: 'GitHub', exact: true }).getAttribute('href'), 'https://github.com/walnut-a/icon-studio');
+  assert.equal(await footer.getByRole('link', { name: 'GitHub', exact: true }).getAttribute('href'), 'https://github.com/walnut-a/boplet-icon-studio');
   await page.getByRole('button', { name: '中文', exact: true }).click();
   await page.reload();
   assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN');
